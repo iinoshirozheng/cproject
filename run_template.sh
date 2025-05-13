@@ -1,98 +1,94 @@
 #!/bin/bash
 
-# Exit immediately if a command exits with a non-zero status
-set -e
+# === 路徑設定 ===
+PROJECT_DIR="$(pwd)"
+BUILD_DIR="${PROJECT_DIR}/build"
+BIN_DIR="${PROJECT_DIR}/bin"
+PROJECT_NAME="$(basename "${PROJECT_DIR}")"
 
-# === 預設參數與路徑 ===
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-GENERATE_CMAKE_SCRIPT="${SCRIPT_DIR}/generate_cmake.sh"
+# === 預設值 ===
+RUN_TESTS=false
 
-# === 輸入參數檢查 ===
-if [ $# -lt 1 ]; then
-    echo "❌ 錯誤：請提供專案名稱，例如："
-    echo "    $0 MyApp"
-    exit 1
+# === 參數解析 ===
+for arg in "$@"; do
+case $arg in
+--test)
+RUN_TESTS=true
+shift
+;;
+*)
+;;
+esac
+done
+
+# === 檢查是否存在舊的 build 目錄 ===
+if [ -d "${BUILD_DIR}" ]; then
+    echo "🗑️ 發現已存在的 build 目錄，正在移除..."
+    rm -rf "${BUILD_DIR}" || {
+        echo "❌ 無法移除 build 目錄！請檢查檔案權限。"
+        exit 1
+    }
 fi
 
-PROJECT_NAME="$1"
-PROJECT_DIR="$(pwd)/${PROJECT_NAME}"
-
-# === 關鍵資訊輸出 ===
-echo "🛠 正在生成專案：${PROJECT_NAME}"
-echo "📂 專案目錄：${PROJECT_DIR}"
-echo "📜 generate_cmake.sh 路徑：${GENERATE_CMAKE_SCRIPT}"
-
-# === 建立專案目錄結構 ===
-echo "📂 正在創建目錄結構..."
-mkdir -p "${PROJECT_DIR}/src"    # Source code
-mkdir -p "${PROJECT_DIR}/tests"   # Test code
-mkdir -p "${PROJECT_DIR}/bin"    # Binary output
-
-# === 在 src 資料夾中創建 main.cpp ===
-echo "📝 創建 src/main.cpp..."
-cat > "${PROJECT_DIR}/src/main.cpp" <<EOF
-#include <iostream>
-
-int main() {
-    std::cout << "Hello, ${PROJECT_NAME}! 🌟" << std::endl;
-    return 0;
-}
-EOF
-
-# === 在 test 資料夾中創建 basic_test.cpp ===
-echo "📝 創建 test/basic_test.cpp..."
-cat > "${PROJECT_DIR}/tests/basic_test.cpp" <<EOF
-#include <gtest/gtest.h>
-#include <optional>
-#include <variant>
-#include <string>
-
-// Basic test case
-TEST(BasicTest, AssertTrue)
-{
-    EXPECT_TRUE(true);
-}
-
-TEST(BasicTest, AssertEqual)
-{
-    EXPECT_EQ(2 + 2, 4);
-}
-
-// Test C++17 features
-TEST(BasicTest, StdOptional)
-{
-    std::optional<int> opt = 42;
-    EXPECT_TRUE(opt.has_value());
-    EXPECT_EQ(*opt, 42);
-}
-
-TEST(BasicTest, StdVariant)
-{
-    std::variant<int, std::string> var = 123;
-    EXPECT_TRUE(std::holds_alternative<int>(var));
-    EXPECT_EQ(std::get<int>(var), 123);
-
-    var = "test";
-    EXPECT_TRUE(std::holds_alternative<std::string>(var));
-    EXPECT_EQ(std::get<std::string>(var), "test");
-}
-
-EOF
-
-# === 檢查 generate_cmake.sh 是否存在 ===
-if [ ! -f "${GENERATE_CMAKE_SCRIPT}" ]; then
-    echo "❌ 錯誤：找不到 ${GENERATE_CMAKE_SCRIPT}"
-    exit 1
+# === 檢查是否存在 bin 目錄 ===
+if [ ! -d "${BIN_DIR}" ]; then
+    echo "📁 找不到 bin 目錄，正在建立..."
+    mkdir -p "${BIN_DIR}" || {
+        echo "❌ 無法建立 bin 目錄！"
+        exit 1
+    }
+else
+    echo "📁 已存在 bin 目錄，同步繼續進行。"
 fi
 
-# === 執行 generate_cmake.sh ===
-echo "📜 執行 generate_cmake.sh..."
-cd ${PROJECT_DIR}
-chmod +x "${GENERATE_CMAKE_SCRIPT}"
-sh "${GENERATE_CMAKE_SCRIPT}"
 
-# === 完成提示 ===
-echo "🎉 專案 ${PROJECT_NAME} 已成功生成完成！"
-echo "💡 下一步操作："
-echo "   1. run.sh"
-echo "   1. run.sh --test"
+# === 建置步驟 ===
+echo "📦 建立新的 build 目錄: ${BUILD_DIR}"
+mkdir -p "${BUILD_DIR}" || {
+    echo "❌ 無法建立 build 目錄！"
+    exit 1
+}
+cd "${BUILD_DIR}" || {
+    echo "❌ 無法進入 build 目錄！"
+    exit 1
+}
+
+echo "⚙️ 執行 CMake 配置..."
+
+# 檢查是否禁用測試 (RUN_TESTS 為 false)
+if [ "$RUN_TESTS" = false ]; then
+    cmake .. -DBUILD_TESTS=OFF -DLINK_GTEST=OFF || {
+        echo "❌ CMake 配置失敗！"
+        exit 1
+    }
+else
+    echo "✅ 啟用測試 (Tests enabled)..."
+    cmake .. || {
+        echo "❌ CMake 配置失敗！"
+        exit 1
+    }
+fi
+
+echo "🔨 編譯中..."
+cmake --build . || {
+    echo "❌ 編譯失敗！"
+    exit 1
+}
+
+echo "✅ 建置完成！"
+
+# === 執行測試（如有需要） ===
+if [ "$RUN_TESTS" = true ]; then
+    cd cmake
+    echo "🧪 執行單元測試..."
+    ./run_tests || {
+        echo "❌ 測試執行失敗！"
+        exit 1
+    }
+else
+
+    echo "🚀 執行專案主程序..."
+    cp cmake/${PROJECT_NAME} ${BIN_DIR}/${PROJECT_NAME}
+    cd ${BIN_DIR}
+    "./${PROJECT_NAME}"
+fi
