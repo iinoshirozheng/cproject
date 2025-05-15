@@ -218,29 +218,161 @@ clone_nlohmann_json() {
 EOL
 }
 
-# Clone loguru (header-only)
+# Clone loguru
 clone_loguru() {
     if [ ! -d "loguru" ]; then
         echo "Cloning loguru..."
-        git clone https://github.com/emilk/loguru.git
+        if ! git clone https://github.com/emilk/loguru.git; then
+            echo "Error: Failed to clone loguru repository."
+            return 1
+        fi
     else
-        update_repo "loguru"
+        echo "Updating loguru repository..."
+        if ! (cd loguru && git pull); then
+            echo "Warning: Failed to update loguru repository. Using existing version."
+        fi
     fi
     
-    mkdir -p "${SCRIPT_DIR}/third_party/loguru"
-    cp -r loguru/loguru.hpp "${SCRIPT_DIR}/third_party/loguru"
-    cp -r loguru/loguru.cpp "${SCRIPT_DIR}/third_party/loguru"
+    # Define paths
+    LOGURU_CLONE_DIR="loguru"
+    LOGURU_DEST_DIR="${SCRIPT_DIR}/third_party/loguru"
+    LOGURU_CPP_FILE_NAME="loguru.cpp"
+    LOGURU_HPP_FILE_NAME="loguru.hpp"
+    LOGURU_CPP_DEST_PATH="${LOGURU_DEST_DIR}/${LOGURU_CPP_FILE_NAME}"
 
-    # Add loguru CMake configuration
-    cat >> "${SCRIPT_DIR}/third_party/LinkThirdparty.cmake" << 'EOL'
+    mkdir -p "${LOGURU_DEST_DIR}"
+    
+    # Copy files
+    echo "Copying loguru files to ${LOGURU_DEST_DIR}..."
+    if ! cp -f "${LOGURU_CLONE_DIR}/${LOGURU_HPP_FILE_NAME}" "${LOGURU_DEST_DIR}/"; then
+        echo "Error: Failed to copy ${LOGURU_HPP_FILE_NAME}."
+        return 1
+    fi
+    if ! cp -f "${LOGURU_CLONE_DIR}/${LOGURU_CPP_FILE_NAME}" "${LOGURU_DEST_DIR}/"; then
+        echo "Error: Failed to copy ${LOGURU_CPP_FILE_NAME}."
+        return 1
+    fi
 
-    # === Loguru (Header-only) ===
+    echo "Attempting to patch ${LOGURU_CPP_DEST_PATH} to increase level_buff size..."
+
+    # --- SED PATCHING ---
+    # 模式1: 查找 'char level_buff[<數字>];' 並將 <數字> 替換為 10
+    # 我們假設 level_buff 的定義就在 snprintf 使用它的附近，或者是一個可識別的模式。
+    # 並且假設原始大小是個位數或兩位數。
+    # `\s*` 匹配零個或多個空格/制表符。 `\+` 匹配一個或多個。
+    # `[0-9]\{1,2\}` 匹配 1 到 2 位數字。如果原始大小可能是3位數，則改為 \{1,3\}
+
+    # 備份原始檔案
+    cp "${LOGURU_CPP_DEST_PATH}" "${LOGURU_CPP_DEST_PATH}.orig_before_patch"
+
+    # 這是 sed 命令。注意：sed 的語法在不同平台 (GNU vs BSD/macOS) 可能有差異。
+    # 這個版本嘗試使用擴展正規表示式 (-E for GNU sed, -r for some older seds, macOS sed supports -E)
+    # 並且直接修改檔案，創建 .bak 備份。
+    # 模式解釋:
+    # \(char\s\+level_buff\[\)   : 捕獲 "char " (一個以上空格) "level_buff[" 到 \1
+    # [0-9]\{1,2\}              : 匹配 1 或 2 位數字 (原始大小)
+    # \(\];\)                    : 捕獲 "];" 到 \2
+    # 替換為: \1 (第一捕獲組) 10 \2 (第二捕獲組)
+    
+    # 為了更好的可移植性和清晰度，我們可以嘗試一個稍微不同的方法，或者使用 awk。
+    # 以下是一個 sed 嘗試，如果失敗，我們會嘗試 awk。
+
+    PATCH_SUCCEEDED=false
+    # 嘗試 sed (macOS/BSD sed 通常需要 -E 選項用於擴展正則，且 -i 後面直接跟備份副檔名)
+    # GNU sed -i 和 -E 選項可能略有不同
+    echo "Trying sed to patch 'char level_buff[<size>];'..."
+    if sed -E -i'.bak' 's/(char\s+level_buff\[)[0-9]+(\];)/\110\2/g' "${LOGURU_CPP_DEST_PATH}"; then
+        if grep -q 'char\s*level_buff\[10\];' "${LOGURU_CPP_DEST_PATH}"; then
+            echo "SED PATCH SUCCEEDED: 'char level_buff[10];' found."
+            rm -f "${LOGURU_CPP_DEST_PATH}.bak" # 刪除 sed 創建的備份
+            PATCH_SUCCEEDED=true
+        else
+            echo "SED command executed, but verification failed. 'char level_buff[10];' not found."
+            echo "Original line might be different. Restoring from .bak (if exists) or .orig_before_patch."
+            if [ -f "${LOGURU_CPP_DEST_PATH}.bak" ]; then
+                mv "${LOGURU_CPP_DEST_PATH}.bak" "${LOGURU_CPP_DEST_PATH}"
+            elif [ -f "${LOGURU_CPP_DEST_PATH}.orig_before_patch" ]; then # Fallback to original copy
+                 mv "${LOGURU_CPP_DEST_PATH}.orig_before_patch" "${LOGURU_CPP_DEST_PATH}"
+            fi
+        fi
+    else
+        echo "SED command itself failed to execute."
+        if [ -f "${LOGURU_CPP_DEST_PATH}.bak" ]; then # 如果 sed 失敗但創建了 .bak
+            mv "${LOGURU_CPP_DEST_PATH}.bak" "${LOGURU_CPP_DEST_PATH}"
+        elif [ -f "${LOGURU_CPP_DEST_PATH}.orig_before_patch" ]; then
+             mv "${LOGURU_CPP_DEST_PATH}.orig_before_patch" "${LOGURU_CPP_DEST_PATH}"
+        fi
+    fi
+
+    # 如果 sed 失敗，可以嘗試 awk 作為備選方案 (更複雜，但更強大)
+    if [ "$PATCH_SUCCEEDED" = false ]; then
+        echo "SED patch failed or verification failed. Attempting AWK patch..."
+        # 將原始檔案複製回來，以便 awk 在乾淨的檔案上操作
+        cp "${LOGURU_CPP_DEST_PATH}.orig_before_patch" "${LOGURU_CPP_DEST_PATH}"
+
+        # awk 命令：如果一行包含 "char" 和 "level_buff[" 並且包含 "];"，則替換中間的數字
+        # gsub(\[[0-9]+\];, "[10];", current_line)
+        # 這個 awk 命令會創建一個新檔案，然後替換原檔案
+        awk '
+        /char/ && /level_buff\[/ && /\];/ {
+            # 找到包含 "char" "level_buff[" 和 "];" 的行
+            # 嘗試替換 level_buff[數字] 為 level_buff[10]
+            # $0 代表整行
+            if (sub(/level_buff\[[0-9]+\];/, "level_buff[10];", $0)) {
+                print "AWK: Patched line: " $0 > "/dev/stderr" # 打印到 stderr 進行調試
+            }
+        }
+        { print $0 } # 打印每一行（修改過的或未修改的）
+        ' "${LOGURU_CPP_DEST_PATH}" > "${LOGURU_CPP_DEST_PATH}.awk_tmp"
+
+        if [ $? -eq 0 ] && [ -s "${LOGURU_CPP_DEST_PATH}.awk_tmp" ]; then
+            if grep -q 'char\s*level_buff\[10\];' "${LOGURU_CPP_DEST_PATH}.awk_tmp"; then
+                mv "${LOGURU_CPP_DEST_PATH}.awk_tmp" "${LOGURU_CPP_DEST_PATH}"
+                echo "AWK PATCH SUCCEEDED."
+                PATCH_SUCCEEDED=true
+            else
+                echo "AWK command executed, but verification failed. 'char level_buff[10];' not found in awk output."
+                rm -f "${LOGURU_CPP_DEST_PATH}.awk_tmp"
+                # 保留 .orig_before_patch, 不還原，以便用戶檢查
+            fi
+        else
+            echo "AWK command failed or produced an empty file."
+            rm -f "${LOGURU_CPP_DEST_PATH}.awk_tmp"
+            # 保留 .orig_before_patch
+        fi
+    fi
+    
+    # 清理原始備份
+    if [ "$PATCH_SUCCEEDED" = true ]; then
+        rm -f "${LOGURU_CPP_DEST_PATH}.orig_before_patch"
+    else
+        echo "------------------------------------------------------------------"
+        echo "PATCHING FAILED for ${LOGURU_CPP_DEST_PATH}."
+        echo "The original unpatched file is: ${LOGURU_CPP_DEST_PATH}.orig_before_patch"
+        echo "Please manually inspect and modify the definition of 'level_buff' in:"
+        echo "${LOGURU_CPP_DEST_PATH}"
+        echo "You need to find a line like 'char level_buff[<size>];' and change <size> to 10 or more."
+        echo "The problematic snprintf call is near line 1328."
+        echo "------------------------------------------------------------------"
+        # return 1 # 取決於你是否希望在補丁失敗時停止整個腳本
+    fi
+
+
+    # Add loguru CMake configuration (保持不變)
+    if ! grep -q "Using Loguru for logging..." "${SCRIPT_DIR}/third_party/LinkThirdparty.cmake"; then
+        echo "Adding Loguru configuration to LinkThirdparty.cmake..."
+        cat >> "${SCRIPT_DIR}/third_party/LinkThirdparty.cmake" << 'EOL'
+
+    # === Loguru (Header-only, but we compile .cpp too) ===
     if(LINK_LOGURU)
         message(STATUS "Using Loguru for logging...")
         target_sources(${target_name} PRIVATE ${THIRD_PARTY_DIR}/loguru/loguru.cpp)
         target_include_directories(${target_name} PRIVATE ${THIRD_PARTY_DIR}/loguru)
     endif()
 EOL
+    else
+        echo "Loguru configuration already exists in LinkThirdparty.cmake."
+    fi
 }
 
 # Clone and build Poco
