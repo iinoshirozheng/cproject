@@ -502,6 +502,41 @@ clone_redis_plus_plus() {
 EOL
 }
 
+# Function to add pthread and dl linking options
+add_pthread_and_dl_link() {
+    cat >> "${SCRIPT_DIR}/third_party/LinkThirdparty.cmake" << 'EOL'
+
+    # === Pthread & DL (Dynamic Linking Library) ===
+    # This section provides an explicit option to link pthread and dl.
+    # Note: Other libraries might already link these implicitly.
+    # CMake is generally good at handling duplicate link requests for system libraries.
+
+    if(LINK_THREAD)
+        message(STATUS "Explicitly linking Pthread...")
+        find_package(Threads QUIET)
+        if(Threads_FOUND)
+            target_link_libraries(${target_name} PRIVATE Threads::Threads)
+            message(STATUS "Linked Threads::Threads (via find_package)")
+        else()
+            message(WARNING "Threads package not found by CMake, linking pthread directly.")
+            target_link_libraries(${target_name} PRIVATE pthread)
+            message(STATUS "Linked pthread (directly)")
+        endif()
+    endif()
+
+    # DL Library for dladdr, dlopen, etc.
+    # Often needed by logging libraries for stack traces or by plugin systems.
+    if(LINK_DL) # 新增一個 LINK_DL 變數來控制是否連結 libdl
+        message(STATUS "Explicitly linking DL library...")
+        # On most Unix-like systems (Linux, macOS), libdl is just 'dl'
+        # CMake doesn't have a standard find_package module for libdl like it does for Threads,
+        # as linking 'dl' directly is common and portable enough for these systems.
+        target_link_libraries(${target_name} PRIVATE dl)
+        message(STATUS "Linked dl library (directly)")
+    endif()
+EOL
+}
+
 # Main function
 main() {
     Create_dir
@@ -515,6 +550,9 @@ main() {
     clone_spdlog
     clone_gtest
     
+    # Add the explicit pthread linking option to LinkThirdparty.cmake
+    add_pthread_and_dl_link
+
     clean_build
 
     echo "All dependencies successfully built and installed to ${SCRIPT_DIR}/third_party/{package_name}!"
