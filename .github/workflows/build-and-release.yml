@@ -1,7 +1,6 @@
 name: Build Container and Upload as Release
 
 on:
-  workflow_dispatch: # or push to main, etc.
   push:
     branches: [ "main" ]
 
