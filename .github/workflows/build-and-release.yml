@@ -1,0 +1,38 @@
+name: Build Container and Upload as Release
+
+on:
+  workflow_dispatch: # or push to main, etc.
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: 安裝 Podman & gzip
+        run: |
+          sudo apt update
+          sudo apt install -y podman gzip
+
+      - name: 建構 container image
+        run: |
+          podman build -f Containerfile.builder -t sinopac/cpp-builder .
+
+      - name: 儲存並壓縮 image
+        run: |
+          mkdir -p docker-images
+          podman save sinopac/cpp-builder | gzip > docker-images/cpp-builder.tar.gz
+
+      - name: 建立 Release 並上傳映像
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: cpp-builder-v1
+          name: "C++ Builder Image v1"
+          files: |
+            docker-images/cpp-builder.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_PAT }} # 🔐 請使用 PAT (非預設 token)
