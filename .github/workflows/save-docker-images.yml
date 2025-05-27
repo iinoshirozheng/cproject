@@ -20,7 +20,11 @@ jobs:
       - name: 建構 container image
         run: |
           podman build -f Containerfile.builder -t sinopac/cpp-builder .
-
+          
+      - name: 重新標記 TAG
+        run: |
+          podman tag localhost/sinopac/cpp-builder sinopac/cpp-builder
+          
       - name: 儲存並壓縮 image
         run: |
           mkdir -p docker-images
