@@ -28,7 +28,7 @@ jobs:
       - name: 儲存並壓縮 image
         run: |
           mkdir -p docker-images
-          podman save sinopac/cpp-builder | gzip > docker-images/cpp-builder.tar.gz
+          podman save sinopac/cpp-builder > cpp-builder.tar
 
       - name: 建立 Release 並上傳映像
         uses: softprops/action-gh-release@v1
@@ -36,6 +36,6 @@ jobs:
           tag_name: cpp-builder-v1
           name: "C++ Builder Image v1"
           files: |
-            docker-images/cpp-builder.tar.gz
+            docker-images/cpp-builder.tar
         env:
           GITHUB_TOKEN: ${{ secrets.GH_PAT }} # 🔐 請使用 PAT (非預設 token)
