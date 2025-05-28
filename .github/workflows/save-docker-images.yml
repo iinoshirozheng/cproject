@@ -15,16 +15,15 @@ jobs:
       - name: 安裝 Podman & gzip
         run: |
           sudo apt update
-          sudo apt install -y podman gzip
 
       - name: 建構 container image
         run: |
-          podman build -f Containerfile.builder -t sinopac.io/cpp-builder .
+          podman build -f Containerfile.builder -t sinopac.io/cpp-builder:latest .
           
       - name: 儲存 image
         run: |
           mkdir -p docker-images
-          podman save sinopac.io/cpp-builder > cpp-builder.tar
+          podman save sinopac.io/cpp-builder:latest > cpp-builder.tar
 
       - name: 建立 Release 並上傳映像
         uses: softprops/action-gh-release@v1
@@ -34,4 +33,4 @@ jobs:
           files: |
             docker-images/cpp-builder.tar
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_PAT }} # 🔐 請使用 PAT (非預設 token)
+          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
