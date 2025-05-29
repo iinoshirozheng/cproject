@@ -2,39 +2,26 @@
 
 # 1. 使用 Red Hat UBI Minimal 作為基礎映像
 #    這是輕量化的映像，適合構建高效的容器環境
-FROM registry.access.redhat.com/ubi9/ubi-minimal:latest AS base_builder
+FROM registry.access.redhat.com/ubi9/ubi:latest AS base_builder
 
-# 2. 使用 microdnf 安裝必要的開發工具
-#    這包括 GCC 編譯器、CMake、Git 以及 download_packages.sh 腳本可能需要的工具
-RUN microdnf install -y \
-    gcc \
-    gcc-c++ \
-    cmake \
-    git \
-    curl \
-    unzip \
-    tar \
-    # 如果 download_packages.sh 需要更多工具，可以在這裡添加
-    && microdnf clean all
-
-# 3. 將本地的 download_packages.sh 腳本複製到容器中
+# 2. 將本地的 download_packages.sh 腳本複製到容器中
 #    此腳本用於下載和準備第三方庫
 COPY download_packages.sh /opt/download_packages.sh
 
-# 4. 修改腳本權限，確保腳本可以被執行
+# 3. 修改腳本權限，確保腳本可以被執行
 RUN chmod +x /opt/download_packages.sh
 
-# 5. 設定工作目錄到 /opt，然後執行 download_packages.sh 腳本
+# 4. 設定工作目錄到 /opt，然後執行 download_packages.sh 腳本
 #    此腳本會在 /opt/ 下下載並準備 "third_party" 文件夾
 WORKDIR /opt
 RUN /opt/download_packages.sh
 
-# 6. 設定環境變數 THIRD_PARTY_DIR，方便後續引用第三方庫的路徑
+# 5. 設定環境變數 THIRD_PARTY_DIR，方便後續引用第三方庫的路徑
 ENV THIRD_PARTY_DIR=/opt/third_party
 
-# 7. 驗證腳本是否正確執行，並確認第三方庫是否存在
+# 6. 驗證腳本是否正確執行，並確認第三方庫是否存在
 #    此命令會遞歸列出 /opt/third_party 目錄下的文件
 RUN ls -lR ${THIRD_PARTY_DIR}
 
-# 8. 可選：將 Shell 作為默認入口，方便手動調試
+# 7. 可選：將 Shell 作為默認入口，方便手動調試
 # CMD ["bash"]  # 調試時可打開這行
