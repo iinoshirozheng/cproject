@@ -6,13 +6,12 @@ FROM registry.access.redhat.com/ubi9/ubi:latest AS base_builder
 
 # 2. 安裝額外的開發工具
 RUN dnf install -y \
-    gcc-c++ \         # 安装 C++ 编译器
-    cmake \           # 安装 CMake
-    git \             # 安装 Git
-    unzip \           # 用于解压缩
-    tar \             # 用于文件压缩处理
-    && dnf clean all  # 清理暂存文件以减少镜像大小
-
+    gcc-c++ \
+    cmake \
+    git \
+    unzip \
+    tar \
+    && dnf clean all
 
 # 3. 將本地的 download_packages.sh 腳本複製到容器中
 #    此腳本用於下載和準備第三方庫
