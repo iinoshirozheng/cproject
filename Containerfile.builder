@@ -28,5 +28,5 @@ ENV THIRD_PARTY_DIR=/opt/third_party
 # 驗證下載的目錄
 RUN ls -lR ${THIRD_PARTY_DIR}
 
-# （可選）將 Shell 設置為默認命令
+# （可選）將 Shell 設置為默認命令 
 # CMD ["bash"]
