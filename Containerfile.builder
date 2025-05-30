@@ -4,7 +4,7 @@ FROM registry.access.redhat.com/ubi9/ubi:latest AS base_builder
 
 # 安裝 GCC, G++, CMake 和其他所需的工具
 # UBI 9 使用 dnf 作為包管理器
-RUN dnf install -y \
+RUN dnf install -y --allowerasing \
     gcc \
     gcc-c++ \
     cmake \
@@ -14,8 +14,7 @@ RUN dnf install -y \
     unzip \
     tar \
     # (根據 download_packages.sh 的實際需求添加更多工具)
-    # 例如：如果 download_packages.sh 中有用到 Python，可能需要 python3-pip 等
-    && dnf clean all # 清理 dnf 緩存以減少映像大小
+    && dnf clean all
 
 # 複製 download_packages.sh 腳本到映像中
 COPY download_packages.sh /opt/download_packages.sh
