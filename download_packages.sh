@@ -392,7 +392,7 @@ clone_poco() {
           -DBUILD_SHARED_LIBS=OFF \
           -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
           ..
-    make -j$(sysctl -n hw.ncpu)
+    make -j1
     make install
     cd ../../..
 
