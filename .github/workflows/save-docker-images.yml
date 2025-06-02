@@ -23,7 +23,7 @@ jobs:
       - name: 儲存 image
         run: |
           mkdir -p docker-images
-          podman save sinopac.io/cpp-builder:latest > cpp-builder.tar
+          podman save sinopac.io/cpp-builder:latest > docker-images/cpp-builder.tar
 
       - name: 建立 Release 並上傳映像
         uses: softprops/action-gh-release@v1
