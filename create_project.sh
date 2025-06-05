@@ -26,7 +26,6 @@ echo "📜 generate_cmake.sh 路徑：${GENERATE_CMAKE_SCRIPT}"
 echo "📂 正在創建目錄結構..."
 mkdir -p "${PROJECT_DIR}/src"    # Source code
 mkdir -p "${PROJECT_DIR}/tests"   # Test code
-mkdir -p "${PROJECT_DIR}/bin"    # Binary output
 
 # === 在 src 資料夾中創建 main.cpp ===
 echo "📝 創建 src/main.cpp..."
@@ -94,5 +93,5 @@ sh "${GENERATE_CMAKE_SCRIPT}"
 # === 完成提示 ===
 echo "🎉 專案 ${PROJECT_NAME} 已成功生成完成！"
 echo "💡 下一步操作："
-echo "   1. run.sh"
-echo "   1. run.sh --test"
+echo "   > cproject build [ --test ]"
+echo "   > cproject run [ --test ]"

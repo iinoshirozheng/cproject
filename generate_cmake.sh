@@ -44,6 +44,8 @@ fi
 mkdir -p "${TARGET_CMAKE_DIR}"
 cp -v "${TEMPLATE_DIR}"/* "${TARGET_CMAKE_DIR}/"
 cp ${SCRIPT_DIR}/run_template.sh ${PROJECT_DIR}/run.sh
+# linux : sed -i "s|CUSTOM_THIRD_PARTY_DIR=\"__SCRIPT_DIR__/third_party\"|CUSTOM_THIRD_PARTY_DIR=\"${SCRIPT_DIR}/third_party\"|" "${PROJECT_DIR}/run.sh"
+sed -i '' "s|CUSTOM_THIRD_PARTY_DIR=\"__SCRIPT_DIR__/third_party\"|CUSTOM_THIRD_PARTY_DIR=\"${SCRIPT_DIR}/third_party\"|" "${PROJECT_DIR}/run.sh"
 chmod +x ${PROJECT_DIR}/run.sh
 
 # === 產生主 CMakeLists.txt ===
