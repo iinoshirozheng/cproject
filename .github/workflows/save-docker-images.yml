@@ -18,12 +18,12 @@ jobs:
 
       - name: 建構 container image
         run: |
-          podman build -f Containerfile.builder -t sinopac.io/cpp-builder:latest .
+          podman build -f Containerfile.builder -t raylab.io/cpp-builder:latest .
           
       - name: 儲存 image
         run: |
           mkdir -p docker-images
-          podman save sinopac.io/cpp-builder:latest > docker-images/cpp-builder.tar
+          podman save raylab.io/cpp-builder:latest > docker-images/cpp-builder.tar
 
       - name: 建立 Release 並上傳映像
         uses: softprops/action-gh-release@v1
