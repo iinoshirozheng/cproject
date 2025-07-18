@@ -9,6 +9,7 @@ CMAKE_FILE="${PROJECT_DIR}/CMakeLists.txt"
 # 目錄變數
 BUILD_DIR="${PROJECT_DIR}/build"
 BIN_DIR="${PROJECT_DIR}/bin"
+LIB_DIR="${PROJECT_DIR}/lib"
 
 # === 新增：定義清理函數 ===
 cleanup() {
@@ -99,16 +100,31 @@ BUILD_ONLY=false
 DEPLOY_MODE=false # 新增 deploy 模式旗標
 
 # === 新增：接收第三方函式庫路徑參數 ===
-CUSTOM_THIRD_PARTY_DIR="__SCRIPT_DIR__/third_party" # 修正預設路徑變數
+CUSTOM_THIRD_PARTY_DIR="/Users/ray/cppackage/third_party"
 
-# === 參數解析 ===
+# === 參數解析 (已修正語法) ===
 while [[ "$#" -gt 0 ]]; do
     case $1 in
-        --test) RUN_TESTS=true; shift ;;
-        --build-only) BUILD_ONLY=true; shift ;;
-        --third-party-dir) CUSTOM_THIRD_PARTY_DIR="$2"; shift 2 ;; # 接收路徑參數
-        --deploy) DEPLOY_MODE=true; shift ;; # 新增 deploy 參數
-        *) echo "Unknown parameter passed: $1"; exit 1 ;; # 這裡的 exit 會觸發 trap
+        --test)
+            RUN_TESTS=true
+            shift
+            ;;
+        --build-only)
+            BUILD_ONLY=true
+            shift
+            ;;
+        --third-party-dir)
+            CUSTOM_THIRD_PARTY_DIR="$2"
+            shift 2
+            ;;
+        --deploy)
+            DEPLOY_MODE=true
+            shift
+            ;;
+        *)
+            echo "Unknown parameter passed: $1"
+            exit 1
+            ;;
     esac
 done
 
@@ -120,31 +136,7 @@ if [ "${DEPLOY_MODE}" = true ]; then
   fi
   generate_containerfile
   echo "✅ --deploy mode finished."
-  # 正常退出，此時 EXIT trap 會執行 cleanup
-  # 如果不希望在生成 Containerfile 後執行 cleanup，可以取消 EXIT trap:
-  # trap - EXIT
   exit 0
-fi
-
-
-# === 清理舊的 build 目錄 (這部分可以由 trap 處理，但保留也無妨，trap 會在腳本最終退出時執行) ===
-# if [ -d "${BUILD_DIR}" ]; then
-#   echo "🗑️ 發現已存在的 build 目錄，正在移除..."
-#   rm -rf "${BUILD_DIR}" || {
-#     echo "❌ 無法移除 build 目錄！請檢查權限。"
-#     exit 1 # 這裡的 exit 會觸發 trap
-#   }
-# fi
-
-# === 建立 bin 目錄 if needed ===
-if [ ! -d "${BIN_DIR}" ]; then
-  echo "📁 找不到 bin 目錄，正在建立..."
-  mkdir -p "${BIN_DIR}" || {
-    echo "❌ 無法建立 bin 目錄！"
-    exit 1 # 這裡的 exit 會觸發 trap
-  }
-else
-  echo "📁 已存在 bin 目錄，繼續…"
 fi
 
 # === 建置步驟 ===
@@ -162,8 +154,6 @@ echo "⚙️ 準備 CMake 配置參數…"
 CMAKE_ARGS=() # 初始化 CMake 參數陣列
 
 # 處理第三方函式庫路徑
-# 確保 CUSTOM_THIRD_PARTY_DIR 是絕對路徑或相對於 PROJECT_DIR 的有效路徑
-# CMakeLists.txt 中應該能夠正確處理這個傳入的路徑
 if [[ "$CUSTOM_THIRD_PARTY_DIR" != /* ]]; then
     # 如果不是絕對路徑，假設它是相對於 PROJECT_DIR
     resolved_third_party_dir="${PROJECT_DIR}/${CUSTOM_THIRD_PARTY_DIR}"
@@ -198,14 +188,27 @@ echo "✅ 建置完成！"
 
 if [ "${RUN_TESTS}" = true ]; then
   echo "🧪 執行單元測試…"
-  # 假設 run_tests 在 ${BUILD_DIR}/cmake/ 目錄下，這取決於您的 CMake 設定
-  # 如果 run_tests 位於 ${BUILD_DIR}/bin 或其他位置，請相應修改
-  if [ -f "${BUILD_DIR}/cmake/run_tests" ]; then
-    cd "${BUILD_DIR}/cmake"
-    ./run_tests # 如果這裡失敗，set -e 會導致腳本退出，觸發 trap
-  elif [ -f "${BUILD_DIR}/bin/run_tests" ]; then # 檢查是否在 build/bin
-    cd "${BUILD_DIR}/bin"
-    ./run_tests
+  
+  TEST_EXECUTABLE_PATH=""
+  POSSIBLE_TEST_PATHS=(
+      "${BUILD_DIR}/cmake/run_tests" # <--- 新增這個最關鍵的路徑
+      "${BUILD_DIR}/run_tests"
+      "${BUILD_DIR}/bin/run_tests"
+  )
+
+  for path in "${POSSIBLE_TEST_PATHS[@]}"; do
+      if [ -f "$path" ]; then
+          TEST_EXECUTABLE_PATH="$path"
+          break
+      fi
+  done
+
+  if [ -n "${TEST_EXECUTABLE_PATH}" ]; then
+    echo "✅ 在 ${TEST_EXECUTABLE_PATH} 找到測試程式，準備執行..."
+    # 進入該檔案所在目錄再執行，避免路徑問題
+    cd "$(dirname "${TEST_EXECUTABLE_PATH}")"
+    "./$(basename "${TEST_EXECUTABLE_PATH}")"
+    cd "${PROJECT_DIR}" # 執行完畢後回到專案根目錄
   else
     echo "⚠️ 找不到測試執行檔 run_tests。"
   fi
@@ -220,42 +223,58 @@ if [ -z "${PROJECT_NAME}" ]; then
   exit 1 # Triggers EXIT trap
 fi
 
-# 執行檔的路徑取決於 CMake 設定，通常在 build 目錄下
-# 您的原始腳本是從 build/cmake/ 複製，這比較不尋常
-# 通常執行檔會在 ${BUILD_DIR}/${PROJECT_NAME} 或 ${BUILD_DIR}/bin/${PROJECT_NAME}
-EXECUTABLE_PATH_IN_BUILD="${BUILD_DIR}/${PROJECT_NAME}" # 假設執行檔直接在 BUILD_DIR
-if [ ! -f "${EXECUTABLE_PATH_IN_BUILD}" ]; then
-    # 檢查是否在 build/cmake/ (如原始腳本)
-    if [ -f "${BUILD_DIR}/cmake/${PROJECT_NAME}" ]; then
-        EXECUTABLE_PATH_IN_BUILD="${BUILD_DIR}/cmake/${PROJECT_NAME}"
-    # 檢查是否在 build/bin/ (常見的 CMAKE_RUNTIME_OUTPUT_DIRECTORY)
-    elif [ -f "${BUILD_DIR}/bin/${PROJECT_NAME}" ]; then
-        EXECUTABLE_PATH_IN_BUILD="${BUILD_DIR}/bin/${PROJECT_NAME}"
-    else
-        echo "❌ 找不到編譯後的執行檔 ${PROJECT_NAME} 在 ${BUILD_DIR} 或其子目錄 (cmake/, bin/)"
-        exit 1 # Triggers EXIT trap
+# 尋找編譯產出
+EXECUTABLE_PATH_IN_BUILD=""
+POSSIBLE_PATHS=(
+    "${BUILD_DIR}/cmake/${PROJECT_NAME}"
+    "${BUILD_DIR}/${PROJECT_NAME}"
+    "${BUILD_DIR}/bin/${PROJECT_NAME}"
+)
+for path in "${POSSIBLE_PATHS[@]}"; do
+    if [ -f "$path" ]; then
+        EXECUTABLE_PATH_IN_BUILD="$path"
+        break
     fi
+done
+
+# 檢查是否為函式庫
+IS_LIBRARY=false
+if [ -z "${EXECUTABLE_PATH_IN_BUILD}" ] && [ -f "${BUILD_DIR}/lib${PROJECT_NAME}.a" ]; then
+    IS_LIBRARY=true
 fi
 
-echo "🚀 將 ${PROJECT_NAME} 從 ${EXECUTABLE_PATH_IN_BUILD} 複製到 ${BIN_DIR}..."
-cp "${EXECUTABLE_PATH_IN_BUILD}" "${BIN_DIR}/${PROJECT_NAME}" # 如果這裡失敗，set -e 會導致腳本退出，觸發 trap
+# 複製或提示
+if [ -n "${EXECUTABLE_PATH_IN_BUILD}" ]; then
+    echo "🚀 將 ${PROJECT_NAME} 從 ${EXECUTABLE_PATH_IN_BUILD} 複製到 ${BIN_DIR}..."
+    mkdir -p "${BIN_DIR}"
+    cp "${EXECUTABLE_PATH_IN_BUILD}" "${BIN_DIR}/${PROJECT_NAME}"
+    echo "✅ 執行檔已複製到 ${BIN_DIR}"
+elif [ "$IS_LIBRARY" = true ]; then
+    echo "✅ 函式庫 lib${PROJECT_NAME}.a 已成功建置在 ${BUILD_DIR} 目錄下。"
+    mkdir -p "${LIB_DIR}" 
+    cp "${BUILD_DIR}/lib${PROJECT_NAME}.a" "${LIB_DIR}/lib${PROJECT_NAME}.a"
+    echo "✅ 函式庫已複製到 ${LIB_DIR}"
+else
+    echo "❌ 找不到任何編譯後的執行檔或函式庫！"
+    exit 1
+fi
 
-echo "✅ 執行檔已複製到 ${BIN_DIR}"
-
-# 腳本成功執行到這裡時，我們不希望 trap 在正常退出時也刪除 build 目錄
-# 所以在 --build-only 模式或正常執行完主程式後，明確地移除 trap 或以成功狀態退出
+# 執行或結束
 if [ "${BUILD_ONLY}" = true ]; then
   echo "✅ 建置完成 (--build-only 模式)！"
-  # 在 build-only 模式下，我們通常希望保留 build 目錄供檢查
-  # 如果您希望 build-only 模式下保留 build，則可以在這裡取消 EXIT trap
-  # trap - EXIT # 取消 EXIT trap，這樣 build 目錄不會被刪除
-  exit 0 # 正常退出
+  trap - EXIT
+  exit 0
 fi
 
-# 執行主程式
+if [ "$IS_LIBRARY" = true ]; then
+    echo "ℹ️ 專案 '${PROJECT_NAME}' 是一個函式庫，沒有主程式可以執行。"
+    trap - EXIT
+    exit 0
+fi
+
 echo "🚀 執行主程式..."
 cd "${BIN_DIR}"
-"./${PROJECT_NAME}" # 如果這裡失敗，set -e 會導致腳本退出，觸發 trap
+"./${PROJECT_NAME}"
 
 echo "✅ 完成 run.sh ！"
 trap - EXIT # 成功執行完畢，取消 EXIT trap，避免刪除 build 目錄

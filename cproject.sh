@@ -6,23 +6,22 @@ usage() {
 📘 cproject 使用說明
 
 用法:
-  cproject create <ProjectName>
-      ➤ 建立一個新的 C++ 專案，內含 CMake 結構與範例程式
+  cproject create [--library] <ProjectName>
+      ➤ 建立一個新的 C++ 專案。
+      ➤ 加上 --library 旗標，會建立一個靜態函式庫專案 (.a)。
+      ➤ 若無旗標，則預設建立一個可執行檔專案。
 
   cproject build [--test]
-      ➤ 建置當前資料夾的專案
-      ➤ 加上 --test 則會同時建置並準備執行單元測試 (透過 run.sh --build-only --test)
+      ➤ 建置當前資料夾的專案。
 
   cproject run [--test]
-      ➤ 在當前資料夾執行 run.sh 腳本 (建置並執行主程式)
-      ➤ 加上 --test 則會建置、執行單元測試，然後執行主程式
+      ➤ 在當前資料夾執行 run.sh 腳本 (建置並執行)。
 
 範例:
   cproject create MyApp
+  cproject create --library MyLib
   cproject build
-  cproject build --test
   cproject run
-  cproject run --test
 EOF
   exit 1
 }
@@ -42,20 +41,31 @@ SUBCMD="$1"; shift
 
 case "$SUBCMD" in
   create)
+    CREATE_TYPE="executable" # 預設為執行檔
+    if [ "$1" == "--library" ]; then
+      CREATE_TYPE="library"
+      shift # 移除 --library 旗標
+    fi
+
     if [ $# -ne 1 ]; then
       echo ""
-      echo "❌ create 需要且只能有一個參數（專案名稱）！"
+      echo "❌ create 需要一個專案名稱！"
       echo ""
       usage
     fi
     NEW_PROJ="$1"
+    
     if [ ! -x "${SCRIPT_DIR}/create_project.sh" ]; then
       echo "❌ 找不到或無執行權限：${SCRIPT_DIR}/create_project.sh"
       exit 1
     fi
-    echo "📁 透過 create_project.sh scaffold 新專案：${NEW_PROJ}"
-    exec bash "${SCRIPT_DIR}/create_project.sh" "${NEW_PROJ}"
+    
+    echo "📁 透過 create_project.sh 建立新專案：${NEW_PROJ} (類型: ${CREATE_TYPE})"
+    # 將專案類型作為第二個參數傳遞
+    exec bash "${SCRIPT_DIR}/create_project.sh" "${NEW_PROJ}" "${CREATE_TYPE}"
     ;;
+    
+  # ... build 和 run 的部分保持不變 ...
   build)
     BUILD_ARGS="--build-only"
     if [ $# -gt 1 ] || { [ $# -eq 1 ] && [ "$1" != "--test" ]; }; then
