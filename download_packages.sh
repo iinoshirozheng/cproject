@@ -5,47 +5,38 @@ set -e
 
 # Get script directory
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+INSTALL_PREFIX="${SCRIPT_DIR}/third_party"
+BUILD_DIR="${SCRIPT_DIR}/third_party_tmp"
 
-# Create directories
-Create_dir() {
-    if [ -d "${SCRIPT_DIR}/third_party_tmp" ]; then
-        echo "Removing existing third_party_tmp directory..."
-        rm -rf "${SCRIPT_DIR}/third_party_tmp"
-    fi
-    if [ -d "${SCRIPT_DIR}/third_party" ]; then
-        echo "Removing existing third_party directory..."
-        rm -rf "${SCRIPT_DIR}/third_party"
-    fi
-    mkdir -p "${SCRIPT_DIR}/third_party_tmp"
-    mkdir -p "${SCRIPT_DIR}/third_party"
-    cd "${SCRIPT_DIR}/third_party_tmp"
+# --- 函式：初始化目錄與 LinkThirdparty.cmake ---
+setup_directories() {
+    echo "🧹 清理並建立建置目錄..."
+    rm -rf "${BUILD_DIR}" "${INSTALL_PREFIX}"
+    mkdir -p "${BUILD_DIR}" "${INSTALL_PREFIX}"
+    cd "${BUILD_DIR}"
 
-    # Initialize CMake file
-    cat > "${SCRIPT_DIR}/third_party/LinkThirdparty.cmake" << 'EOL'
+    # 初始化 CMake 檔案
+    cat > "${INSTALL_PREFIX}/LinkThirdparty.cmake" << 'EOL'
 function(LinkThirdparty target_name)
     message(STATUS "LinkThirdparty module invoked for target '${target_name}'")
-    message(STATUS "Thirdparty Directory: ${THIRD_PARTY_DIR}")
-
-    # 驗證 THIRD_PARTY_DIR 是否存在
     if(NOT EXISTS "${THIRD_PARTY_DIR}")
         message(FATAL_ERROR "Thirdparty directory '${THIRD_PARTY_DIR}' does not exist!")
     endif()
 EOL
 }
 
-clean_build() {
-    if [ -d "${SCRIPT_DIR}/third_party_tmp" ]; then
-        echo "Cleaning third_party_tmp directory..."
-        rm -rf "${SCRIPT_DIR}/third_party_tmp"
-    fi
-
-    # Close CMake function
-    cat >> "${SCRIPT_DIR}/third_party/LinkThirdparty.cmake" << 'EOL'
+# --- 函式：完成 LinkThirdparty.cmake ---
+finalize_cmake_file() {
+    cat >> "${INSTALL_PREFIX}/LinkThirdparty.cmake" << 'EOL'
 endfunction()
 EOL
+    echo "✅ LinkThirdparty.cmake 已成功產生。"
+    cd "${SCRIPT_DIR}"
+    rm -rf "${BUILD_DIR}"
+    echo "🗑️  臨時建置目錄已清理。"
 }
 
-# Update and clean repo
+# --- 函式：更新並清理 repo ---
 update_repo() {
     local repo_dir=$1
     if [ -d "$repo_dir" ]; then
@@ -60,8 +51,9 @@ update_repo() {
     fi
 }
 
-# Clone and build hiredis
-clone_hiredis() {
+# --- 函式：clone and build hiredis ---
+build_hiredis() {
+    cd "${BUILD_DIR}"
     if [ ! -d "hiredis" ]; then
         echo "Cloning hiredis..."
         git clone https://github.com/redis/hiredis.git
@@ -71,11 +63,11 @@ clone_hiredis() {
     
     cd hiredis
     make -j$(sysctl -n hw.ncpu)
-    make PREFIX="${SCRIPT_DIR}/third_party/hiredis" install
+    make PREFIX="${INSTALL_PREFIX}/hiredis" install
     cd ..
 
     # Add hiredis CMake configuration
-    cat >> "${SCRIPT_DIR}/third_party/LinkThirdparty.cmake" << 'EOL'
+    cat >> "${INSTALL_PREFIX}/LinkThirdparty.cmake" << 'EOL'
 
     # === Hiredis ===
     if(LINK_HIREDIS)
@@ -94,8 +86,9 @@ clone_hiredis() {
 EOL
 }
 
-# Clone and build spdlog (header-only)
-clone_spdlog() {
+# --- 函式：clone and build spdlog (header-only) ---
+build_spdlog() {
+    cd "${BUILD_DIR}"
     if [ ! -d "spdlog" ]; then
         echo "Cloning spdlog..."
         git clone https://github.com/gabime/spdlog.git
@@ -105,7 +98,7 @@ clone_spdlog() {
 
     cd spdlog
     mkdir build && cd build
-    cmake -DCMAKE_INSTALL_PREFIX="${SCRIPT_DIR}/third_party/spdlog" \
+    cmake -DCMAKE_INSTALL_PREFIX="${INSTALL_PREFIX}/spdlog" \
           -DSPDLOG_BUILD_SHARED=OFF \
           -DSPDLOG_BUILD_EXAMPLE=OFF \
           -DSPDLOG_BUILD_TESTS=OFF \
@@ -118,7 +111,7 @@ clone_spdlog() {
     rm -rf spdlog
 
     # Add spdlog CMake configuration
-    cat >> "${SCRIPT_DIR}/third_party/LinkThirdparty.cmake" << 'EOL'
+    cat >> "${INSTALL_PREFIX}/LinkThirdparty.cmake" << 'EOL'
 
     # === spdlog ===
     if(LINK_SPDLOG)
@@ -137,7 +130,9 @@ clone_spdlog() {
 EOL
 }
 
-clone_gtest() {
+# --- 函式：clone and build gtest ---
+build_gtest() {
+    cd "${BUILD_DIR}"
     if [ ! -d "googletest" ]; then
         echo "Cloning googletest..."
         git clone https://github.com/google/googletest.git
@@ -147,7 +142,7 @@ clone_gtest() {
 
     cd googletest
     mkdir -p build && cd build
-    cmake -DCMAKE_INSTALL_PREFIX="${SCRIPT_DIR}/third_party/googletest" \
+    cmake -DCMAKE_INSTALL_PREFIX="${INSTALL_PREFIX}/googletest" \
           -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
           -DBUILD_GMOCK=ON \
           -DBUILD_GTEST=ON \
@@ -159,7 +154,7 @@ clone_gtest() {
     rm -rf googletest
 
     # Add gtest CMake configuration
-    cat >> "${SCRIPT_DIR}/third_party/LinkThirdparty.cmake" << 'EOL'
+    cat >> "${INSTALL_PREFIX}/LinkThirdparty.cmake" << 'EOL'
 
     # === GoogleTest ===
     if(LINK_GTEST)
@@ -195,8 +190,9 @@ clone_gtest() {
 EOL
 }
 
-# Clone nlohmann json (header-only)
-clone_nlohmann_json() {
+# --- 函式：clone and build nlohmann json (header-only) ---
+build_nlohmann_json() {
+    cd "${BUILD_DIR}"
     if [ ! -d "nlohmann_json" ]; then
         echo "Cloning nlohmann/json..."
         git clone https://github.com/nlohmann/json.git nlohmann_json
@@ -204,11 +200,11 @@ clone_nlohmann_json() {
         update_repo "nlohmann_json"
     fi
     
-    mkdir -p "${SCRIPT_DIR}/third_party/nlohmann"
-    cp -r nlohmann_json/single_include/nlohmann "${SCRIPT_DIR}/third_party/"
+    mkdir -p "${INSTALL_PREFIX}/nlohmann"
+    cp -r nlohmann_json/single_include/nlohmann "${INSTALL_PREFIX}/"
 
     # Add nlohmann/json CMake configuration
-    cat >> "${SCRIPT_DIR}/third_party/LinkThirdparty.cmake" << 'EOL'
+    cat >> "${INSTALL_PREFIX}/LinkThirdparty.cmake" << 'EOL'
 
     # === nlohmann/json (Header-only) ===
     if(LINK_NLOHMANN_JSON)
@@ -218,8 +214,9 @@ clone_nlohmann_json() {
 EOL
 }
 
-# Clone loguru
-clone_loguru() {
+# --- 函式：clone and build loguru ---
+build_loguru() {
+    cd "${BUILD_DIR}"
     if [ ! -d "loguru" ]; then
         echo "Cloning loguru..."
         if ! git clone https://github.com/emilk/loguru.git; then
@@ -235,7 +232,7 @@ clone_loguru() {
     
     # Define paths
     LOGURU_CLONE_DIR="loguru"
-    LOGURU_DEST_DIR="${SCRIPT_DIR}/third_party/loguru"
+    LOGURU_DEST_DIR="${INSTALL_PREFIX}/loguru"
     LOGURU_CPP_FILE_NAME="loguru.cpp"
     LOGURU_HPP_FILE_NAME="loguru.hpp"
     LOGURU_CPP_DEST_PATH="${LOGURU_DEST_DIR}/${LOGURU_CPP_FILE_NAME}"
@@ -359,9 +356,9 @@ clone_loguru() {
 
 
     # Add loguru CMake configuration (保持不變)
-    if ! grep -q "Using Loguru for logging..." "${SCRIPT_DIR}/third_party/LinkThirdparty.cmake"; then
+    if ! grep -q "Using Loguru for logging..." "${INSTALL_PREFIX}/LinkThirdparty.cmake"; then
         echo "Adding Loguru configuration to LinkThirdparty.cmake..."
-        cat >> "${SCRIPT_DIR}/third_party/LinkThirdparty.cmake" << 'EOL'
+        cat >> "${INSTALL_PREFIX}/LinkThirdparty.cmake" << 'EOL'
 
     # === Loguru (Header-only, but we compile .cpp too) ===
     if(LINK_LOGURU)
@@ -375,8 +372,9 @@ EOL
     fi
 }
 
-# Clone and build Poco
-clone_poco() {
+# --- 函式：clone and build poco ---
+build_poco() {
+    cd "${BUILD_DIR}"
     if [ ! -d "poco" ]; then
         echo "Cloning Poco..."
         git clone https://github.com/pocoproject/poco.git
@@ -386,7 +384,7 @@ clone_poco() {
     
     cd poco
     mkdir cmake-build && cd cmake-build
-    cmake -DCMAKE_INSTALL_PREFIX="${SCRIPT_DIR}/third_party/poco" \
+    cmake -DCMAKE_INSTALL_PREFIX="${INSTALL_PREFIX}/poco" \
           -DENABLE_TESTS=OFF \
           -DENABLE_SAMPLES=OFF \
           -DBUILD_SHARED_LIBS=OFF \
@@ -397,7 +395,7 @@ clone_poco() {
     cd ../../..
 
     # Add Poco CMake configuration
-    cat >> "${SCRIPT_DIR}/third_party/LinkThirdparty.cmake" << 'EOL'
+    cat >> "${INSTALL_PREFIX}/LinkThirdparty.cmake" << 'EOL'
 
     # === Poco ===
     if(LINK_POCO)
@@ -440,8 +438,9 @@ clone_poco() {
 EOL
 }
 
-# Clone and build redis-plus-plus
-clone_redis_plus_plus() {
+# --- 函式：clone and build redis-plus-plus ---
+build_redis_plus_plus() {
+    cd "${BUILD_DIR}"
     if [ ! -d "redis-plus-plus" ]; then
         echo "Cloning redis-plus-plus..."
         git clone https://github.com/sewenew/redis-plus-plus.git
@@ -451,8 +450,8 @@ clone_redis_plus_plus() {
     
     cd redis-plus-plus
     mkdir -p build && cd build
-    cmake -DCMAKE_INSTALL_PREFIX="${SCRIPT_DIR}/third_party/redis-plus-plus" \
-          -DCMAKE_PREFIX_PATH="${SCRIPT_DIR}/third_party/hiredis" \
+    cmake -DCMAKE_INSTALL_PREFIX="${INSTALL_PREFIX}/redis-plus-plus" \
+          -DCMAKE_PREFIX_PATH="${INSTALL_PREFIX}/hiredis" \
           -DREDIS_PLUS_PLUS_CXX_STANDARD=17 \
           -DREDIS_PLUS_PLUS_BUILD_TEST=OFF \
           -DREDIS_PLUS_PLUS_BUILD_SHARED=OFF \
@@ -465,7 +464,7 @@ clone_redis_plus_plus() {
     rm -rf redis-plus-plus
 
     # Add redis-plus-plus CMake configuration
-    cat >> "${SCRIPT_DIR}/third_party/LinkThirdparty.cmake" << 'EOL'
+    cat >> "${INSTALL_PREFIX}/LinkThirdparty.cmake" << 'EOL'
 
     # === redis-plus-plus ===
     if(LINK_REDIS_PLUS_PLUS)
@@ -504,7 +503,7 @@ EOL
 
 # Function to add pthread and dl linking options
 add_pthread_and_dl_link() {
-    cat >> "${SCRIPT_DIR}/third_party/LinkThirdparty.cmake" << 'EOL'
+    cat >> "${INSTALL_PREFIX}/LinkThirdparty.cmake" << 'EOL'
 
     # === Pthread & DL (Dynamic Linking Library) ===
     # This section provides an explicit option to link pthread and dl.
@@ -537,25 +536,105 @@ add_pthread_and_dl_link() {
 EOL
 }
 
-# Main function
-main() {
-    Create_dir
+# --- 新增：編譯 libxml2 ---
+build_libxml2() {
+    echo "--- 正在下載與編譯 libxml2 ---"
+    cd "${BUILD_DIR}"
+    git clone https://gitlab.gnome.org/GNOME/libxml2.git
+    cd libxml2
+    # autoreconf is needed if autogen.sh is not present or fails
+    autoreconf -fiv
+    # 設定 CFLAGS=-fPIC 確保產生的函式庫是位置無關碼，這對於後續連結很重要
+    ./configure CFLAGS="-fPIC" --prefix="${INSTALL_PREFIX}/libxml2" --without-python --disable-shared
+    make -j$(nproc 2>/dev/null || sysctl -n hw.ncpu)
+    make install
+    cd ..
+    
+    # 將 libxml2 的連結邏輯加入到 LinkThirdparty.cmake
+    cat >> "${INSTALL_PREFIX}/LinkThirdparty.cmake" << 'EOL'
 
-    # Clone and build all dependencies
-    clone_hiredis
-    clone_nlohmann_json
-    clone_loguru
-    clone_poco
-    clone_redis_plus_plus
-    clone_spdlog
-    clone_gtest
+    # === libxml2 ===
+    if(LINK_LIBXML2)
+        message(STATUS "Linking libxml2 (static)...")
+        target_include_directories(${target_name} PRIVATE ${THIRD_PARTY_DIR}/libxml2/include/libxml2)
+        find_library(LIBXML2_LIBRARY NAMES libxml2.a PATHS ${THIRD_PARTY_DIR}/libxml2/lib NO_DEFAULT_PATH)
+        if(LIBXML2_LIBRARY)
+            target_link_libraries(${target_name} PRIVATE ${LIBXML2_LIBRARY})
+        else()
+            message(FATAL_ERROR "libxml2 library not found in ${THIRD_PARTY_DIR}/libxml2/lib")
+        endif()
+    endif()
+EOL
+}
+
+# --- 新增：編譯 libcurl ---
+build_curl() {
+    echo "--- 正在下載與編譯 libcurl ---"
+    cd "${BUILD_DIR}"
+    git clone https://github.com/curl/curl.git
+    cd curl
+    mkdir -p build && cd build
+    # 設定 PKG_CONFIG_PATH，讓 curl 的 cmake 腳本可以找到我們剛剛編譯好的 libxml2
+    export PKG_CONFIG_PATH="${INSTALL_PREFIX}/libxml2/lib/pkgconfig"
+    cmake -DCMAKE_INSTALL_PREFIX="${INSTALL_PREFIX}/curl" \
+          -DBUILD_SHARED_LIBS=OFF \
+          -DCURL_USE_OPENSSL=ON \
+          -DCURL_DISABLE_LDAP=ON \
+          -DCURL_DISABLE_LDAPS=ON \
+          -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+          ..
+    make -j$(nproc 2>/dev/null || sysctl -n hw.ncpu)
+    make install
+    cd ../..
+
+    # 將 curl 的連結邏輯加入到 LinkThirdparty.cmake
+    cat >> "${INSTALL_PREFIX}/LinkThirdparty.cmake" << 'EOL'
+
+    # === cURL ===
+    if(LINK_CURL)
+        message(STATUS "Linking curl (static)...")
+        # 尋找 OpenSSL 和 Zlib，因為 libcurl 依賴它們
+        find_package(OpenSSL REQUIRED)
+        find_package(ZLIB REQUIRED)
+
+        target_include_directories(${target_name} PRIVATE ${THIRD_PARTY_DIR}/curl/include)
+        find_library(LIBCURL_LIBRARY NAMES libcurl.a PATHS ${THIRD_PARTY_DIR}/curl/lib NO_DEFAULT_PATH)
+        if(LIBCURL_LIBRARY)
+            target_link_libraries(${target_name} PRIVATE 
+                ${LIBCURL_LIBRARY}
+                OpenSSL::SSL
+                OpenSSL::Crypto
+                ${ZLIB_LIBRARY}
+            )
+        else()
+            message(FATAL_ERROR "libcurl library not found in ${THIRD_PARTY_DIR}/curl/lib")
+        endif()
+    endif()
+EOL
+}
+
+
+# --- 函式：main function ---
+main() {
+    setup_directories
+
+    #Clone and build all dependencies
+    build_hiredis
+    build_nlohmann_json
+    build_loguru
+    build_poco
+    build_redis_plus_plus
+    build_spdlog
+    build_gtest
+    build_libxml2
+    build_curl
     
     # Add the explicit pthread linking option to LinkThirdparty.cmake
     add_pthread_and_dl_link
 
-    clean_build
+    finalize_cmake_file
 
-    echo "All dependencies successfully built and installed to ${SCRIPT_DIR}/third_party/{package_name}!"
+    echo "All dependencies successfully built and installed to ${INSTALL_PREFIX}!"
 }
 
 # Execute main function
