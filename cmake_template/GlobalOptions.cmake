@@ -1,43 +1,26 @@
 function(DefineGlobalOptions)
-    # Don't redefine standard - it's now set at the root CMakeLists.txt
-    # We'll just make sure we're using C++17 here
-    if(CMAKE_CXX_STANDARD LESS 17)
-        message(WARNING "C++17 or higher is required for this project. Setting CMAKE_CXX_STANDARD to 17.")
-        set(CMAKE_CXX_STANDARD 17 PARENT_SCOPE)
-        set(CMAKE_CXX_STANDARD_REQUIRED ON PARENT_SCOPE)
-        set(CMAKE_CXX_EXTENSIONS OFF PARENT_SCOPE)
-    endif()
+    # --- 步驟 1: 設定 C++ 標準 ---
+    set(CMAKE_CXX_STANDARD 17 PARENT_SCOPE)
+    set(CMAKE_CXX_STANDARD_REQUIRED ON PARENT_SCOPE)
+    set(CMAKE_CXX_EXTENSIONS OFF PARENT_SCOPE)
 
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
-
-    set(THIRD_PARTY_DIR ${CMAKE_SOURCE_DIR}/third_party CACHE STRING "Path to third-party libraries")
-    include(${THIRD_PARTY_DIR}/LinkThirdparty.cmake OPTIONAL)
-
-    option(LINK_REDIS_PLUS_PLUS "Enable redis-plus-plus static link" OFF)
-    option(LINK_HIREDIS "Enable hiredis static link" OFF)
-    option(LINK_NLOHMANN_JSON "Enable nlohmann/json" OFF)
-    option(LINK_LOGURU "Enable Loguru logger" OFF)
-    option(LINK_THREAD "Enable thread" OFF)
-    option(LINK_DL "Enable dl" OFF)
-    option(LINK_GTEST "Enable Google Test framework" OFF)
-    option(LINK_POCO "Enable Poco static link" OFF)
-    option(LINK_SPDLOG "Enable spdlog logger" OFF)
+    # --- 步驟 2: 設定全域編譯旗標 ---
+    message(STATUS "正在設定全域編譯旗標...")
+    add_compile_options(
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Wformat=2
+        -Wunused-parameter
+        -Wno-missing-field-initializers
+        -fPIC
+    )
+    add_compile_options($<$<CONFIG:Debug>:-g -O0>)
+    add_compile_options($<$<CONFIG:Release>:-O3 -DNDEBUG>)
+    
+    # --- 步驟 3: 專案選項 ---
     option(BUILD_TESTS "Build unit tests" OFF)
-    option(LINK_CURL "Enable curl static link" OFF)
-    option(LINK_LIBXML2 "Enable libxml2 static link" OFF)
-
-    message(STATUS "靜態連結選項:")
-    message(STATUS " LINK_HIREDIS: ${LINK_HIREDIS}")
-    message(STATUS " LINK_POCO: ${LINK_POCO}")
-    message(STATUS " LINK_LOGURU: ${LINK_LOGURU}")
-    message(STATUS " LINK_NLOHMANN_JSON: ${LINK_NLOHMANN_JSON}")
-    message(STATUS " LINK_REDIS_PLUS_PLUS: ${LINK_REDIS_PLUS_PLUS}")
-    message(STATUS " LINK_SPDLOG: ${LINK_SPDLOG}")
-    message(STATUS " LINK_GTEST: ${LINK_GTEST}")
-    message(STATUS " BUILD_TESTS: ${BUILD_TESTS}")
-    message(STATUS " LINK_CURL: ${LINK_CURL}")
-    message(STATUS " LINK_LIBXML2: ${LINK_LIBXML2}")
 
     message(STATUS "C++ 標準: ${CMAKE_CXX_STANDARD}")
-    message(STATUS "第三方庫目錄: ${THIRD_PARTY_DIR}")
+    message(STATUS "建置測試: ${BUILD_TESTS}")
 endfunction()

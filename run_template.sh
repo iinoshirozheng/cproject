@@ -51,7 +51,7 @@ RUN chmod +x ./run.sh
 # (或者直接使用 CMakeLists.txt 中讀取環境變數的邏輯)
 # 來找到函式庫。
 # --third-party-dir /opt/third_party 告訴 run.sh 在 builder 內部何處尋找函式庫
-RUN ./run.sh --build-only --third-party-dir /opt/third_party
+RUN ./run.sh --build-only
 
 # --- Stage 2: Runner ---
 FROM registry.access.redhat.com/ubi9/ubi:latest
@@ -99,10 +99,7 @@ RUN_TESTS=false
 BUILD_ONLY=false
 DEPLOY_MODE=false # 新增 deploy 模式旗標
 
-# === 新增：接收第三方函式庫路徑參數 ===
-CUSTOM_THIRD_PARTY_DIR="/Users/ray/cppackage/third_party"
-
-# === 參數解析 (已修正語法) ===
+# === 參數解析 ===
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         --test)
@@ -112,10 +109,6 @@ while [[ "$#" -gt 0 ]]; do
         --build-only)
             BUILD_ONLY=true
             shift
-            ;;
-        --third-party-dir)
-            CUSTOM_THIRD_PARTY_DIR="$2"
-            shift 2
             ;;
         --deploy)
             DEPLOY_MODE=true
@@ -146,27 +139,13 @@ cd "${BUILD_DIR}"
 
 echo "⚙️ 準備 CMake 配置參數…"
 CMAKE_ARGS=() # 初始化 CMake 參數陣列
-
-# 處理第三方函式庫路徑
-if [[ "$CUSTOM_THIRD_PARTY_DIR" != /* ]]; then
-    resolved_third_party_dir="${PROJECT_DIR}/${CUSTOM_THIRD_PARTY_DIR}"
-else
-    resolved_third_party_dir="${CUSTOM_THIRD_PARTY_DIR}"
-fi
-
-if [ -n "$CUSTOM_THIRD_PARTY_DIR" ]; then
-  echo "🛠️ 使用第三方函式庫路徑: ${resolved_third_party_dir}"
-  CMAKE_ARGS+=("-DTHIRD_PARTY_DIR=${resolved_third_party_dir}")
-fi
-
-
 CMAKE_ARGS+=("-DCMAKE_MODULE_PATH=${PROJECT_DIR}/cmake")
 
 if [ "${RUN_TESTS}" = false ]; then
-  CMAKE_ARGS+=("-DBUILD_TESTS=OFF" "-DLINK_GTEST=OFF")
+  CMAKE_ARGS+=("-DBUILD_TESTS=OFF")
 else
   echo "✅ 啟用測試模式…"
-  CMAKE_ARGS+=("-DBUILD_TESTS=ON" "-DLINK_GTEST=ON")
+  CMAKE_ARGS+=("-DBUILD_TESTS=ON")
 fi
 
 echo "⚙️ 執行 CMake 配置…"
@@ -204,7 +183,7 @@ if [ "${RUN_TESTS}" = true ]; then
   fi
 fi
 
-# 返回專案根目錄，以便路徑解析一致
+# 返回專案根目錄
 cd "${PROJECT_DIR}"
 
 if [ -z "${PROJECT_NAME}" ]; then
@@ -228,7 +207,7 @@ for path in "${POSSIBLE_EXEC_PATHS[@]}"; do
     fi
 done
 
-# 尋找函式庫
+# 尋找函式庫檔案
 STATIC_LIB_PATH="${BUILD_DIR}/lib${PROJECT_NAME}.a"
 SHARED_LIB_PATH_SO="${BUILD_DIR}/lib${PROJECT_NAME}.so"
 SHARED_LIB_PATH_DYLIB="${BUILD_DIR}/lib${PROJECT_NAME}.dylib"
@@ -255,7 +234,9 @@ elif [ "$IS_LIBRARY" = true ]; then
     # 複製公開標頭檔
     if [ -d "${PROJECT_DIR}/include" ]; then
         echo "  -> 正在複製公開標頭檔..."
-        cp -R "${PROJECT_DIR}/include" "${LIB_DIR}/"
+        mkdir -p "${LIB_DIR}/include"
+        # 使用 rsync 更健壯，或用 cp -R
+        rsync -a --delete "${PROJECT_DIR}/include/" "${LIB_DIR}/include/"
     fi
     echo "✅ 函式庫及標頭檔已成功複製到 ${LIB_DIR} 目錄"
 else
