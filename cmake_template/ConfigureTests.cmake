@@ -8,7 +8,7 @@ function(ConfigureTests)
     # --- 修正結束 ---
 
     # 檢查 Google Test 是否能被找到
-    find_package(GTest QUIET)
+    find_package(GTest CONFIG REQUIRED)
     if(NOT GTest_FOUND)
         message(WARNING "找不到 GoogleTest (請用 brew install googletest 或確認安裝路徑)，測試目標未建立。")
         return()

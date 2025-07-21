@@ -19,6 +19,7 @@ build/
 cmake-build-*/
 third_party/
 third_party_tmp/
+vcpkg/
 
 # VSCode specific
 .vscode/*

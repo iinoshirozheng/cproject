@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 
 # === 路徑設定 ===
-# 取得腳本自身所在目錄（不管從哪裡呼叫都正確）
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="${SCRIPT_DIR}"
+# 取得腳本自身所在目錄（即專案根目錄）
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VCPKG_TOOLCHAIN_FILE="${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+
 CMAKE_FILE="${PROJECT_DIR}/CMakeLists.txt"
 
 # 目錄變數
@@ -11,7 +12,7 @@ BUILD_DIR="${PROJECT_DIR}/build"
 BIN_DIR="${PROJECT_DIR}/bin"
 LIB_DIR="${PROJECT_DIR}/lib"
 
-# === 新增：定義清理函數 ===
+# === 定義清理函數 ===
 cleanup() {
     echo "🧹 執行清理程序..."
     if [ -d "${BUILD_DIR}" ]; then
@@ -20,62 +21,59 @@ cleanup() {
     fi
 }
 
-# === 新增：定義 Containerfile 生成函數 ===
-generate_containerfile() {
-  local containerfile_path="${PROJECT_DIR}/Containerfile"
-  echo "📝 Generating Containerfile at ${containerfile_path}..."
+# === 定義 Containerfile 生成函數 ===
+# generate_containerfile() {
+#   local containerfile_path="${PROJECT_DIR}/Containerfile"
+#   echo "📝 Generating Containerfile at ${containerfile_path}..."
 
-  if [ -z "${PROJECT_NAME}" ]; then
-    echo "❌ PROJECT_NAME is not set. Cannot generate Containerfile."
-    exit 1 # This will trigger EXIT trap
-  fi
+#   if [ -z "${PROJECT_NAME}" ]; then
+#     echo "❌ PROJECT_NAME is not set. Cannot generate Containerfile."
+#     exit 1 # This will trigger EXIT trap
+#   fi
 
-  cat > "${containerfile_path}" <<EOL
-# Containerfile (for ${PROJECT_NAME})
+#   cat > "${containerfile_path}" <<EOL
+# # Containerfile (for ${PROJECT_NAME})
 
-# --- Stage 1: Builder ---
-# 使用您上面定義的、已包含預編譯第三方函式庫和設定好環境變數的 Builder Image
-# 假設您將上面的 Containerfile.builder 建置成了名為 my_builder_with_env:latest 的映像檔
-FROM raylab.io/cpp-builder:latest AS builder
+# # --- Stage 1: Builder ---
+# # 使用您上面定義的、已包含預編譯第三方函式庫和設定好環境變數的 Builder Image
+# # 假設您將上面的 Containerfile.builder 建置成了名為 my_builder_with_env:latest 的映像檔
+# FROM raylab.io/cpp-builder:latest AS builder
 
-WORKDIR /app
+# WORKDIR /app
 
-# 複製您的 ${PROJECT_NAME} 原始碼
-COPY . .
+# # 複製您的 ${PROJECT_NAME} 原始碼
+# COPY . .
 
-# 賦予 run.sh 執行權限
-RUN chmod +x ./run.sh
+# # 賦予 run.sh 執行權限
+# RUN chmod +x ./run.sh
 
-# 執行 run.sh 來編譯您的 ${PROJECT_NAME}
-# 您的 run.sh 中的 CMake 現在會透過環境變數 THIRD_PARTY_DIR_ENV
-# (或者直接使用 CMakeLists.txt 中讀取環境變數的邏輯)
-# 來找到函式庫。
-# --third-party-dir /opt/third_party 告訴 run.sh 在 builder 內部何處尋找函式庫
-RUN ./run.sh --build-only
+# # 執行 run.sh 來編譯您的 ${PROJECT_NAME}
+# # 您的 run.sh 中的 CMake 現在會透過 vcpkg 自動處理依賴
+# RUN ./run.sh --build-only
 
-# --- Stage 2: Runner ---
-FROM registry.access.redhat.com/ubi9/ubi:latest
+# # --- Stage 2: Runner ---
+# FROM registry.access.redhat.com/ubi9/ubi:latest
 
-WORKDIR /app
+# WORKDIR /app
 
-# 從 Builder 的 /app/bin/ 目錄複製編譯好的執行檔
-COPY --from=builder /app/bin/${PROJECT_NAME} ./${PROJECT_NAME}
+# # 從 Builder 的 /app/bin/ 目錄複製編譯好的執行檔
+# COPY --from=builder /app/bin/${PROJECT_NAME} ./${PROJECT_NAME}
 
-# 確保執行檔有執行權限
-RUN chmod +x ./${PROJECT_NAME}
+# # 確保執行檔有執行權限
+# RUN chmod +x ./${PROJECT_NAME}
 
-# (選用) 安裝執行時期依賴，例如 libstdc++。通常 ubi 映像檔已包含或您的專案靜態連結。
-# RUN microdnf update -y && microdnf install -y libstdc++ && microdnf clean all && rm -rf /var/cache/yum
+# # (選用) 安裝執行時期依賴，例如 libstdc++。通常 ubi 映像檔已包含或您的專案靜態連結。
+# # RUN microdnf update -y && microdnf install -y libstdc++ && microdnf clean all && rm -rf /var/cache/yum
 
-# 定義執行您應用程式的命令
-CMD ["./${PROJECT_NAME}"]
-EOL
+# # 定義執行您應用程式的命令
+# CMD ["./${PROJECT_NAME}"]
+# EOL
 
-  echo "✅ Containerfile generated successfully at ${containerfile_path}"
-}
+#   echo "✅ Containerfile generated successfully at ${containerfile_path}"
+# }
 
 
-# === 新增：設定陷阱 (trap) ===
+# === 設定陷阱 (trap) ===
 # 當腳本因錯誤退出 (EXIT)，或收到中斷 (INT)，終止 (TERM) 信號時，執行 cleanup 函數
 trap cleanup EXIT INT TERM
 
@@ -89,6 +87,14 @@ if [ ! -f "${CMAKE_FILE}" ]; then
     exit 1 # 這裡的 exit 會觸發上面設定的 trap
 fi
 
+# --- vcpkg 整合：確認 vcpkg toolchain 檔案存在 ---
+if [ ! -f "${VCPKG_TOOLCHAIN_FILE}" ]; then
+    echo "❌ 找不到 vcpkg 的 CMake toolchain 檔案！"
+    echo "    預期路徑: ${VCPKG_TOOLCHAIN_FILE}"
+    echo "💡 請確認 vcpkg 已被 clone 到您的工具 repo 目錄下。"
+    exit 1
+fi
+
 # 從 CMakeLists.txt 裡解析 project 名稱 (第一個參數)
 PROJECT_NAME="$(grep -E '^[[:space:]]*project\(' "${CMAKE_FILE}" \
                | head -n1 \
@@ -97,7 +103,7 @@ PROJECT_NAME="$(grep -E '^[[:space:]]*project\(' "${CMAKE_FILE}" \
 # === 預設值 ===
 RUN_TESTS=false
 BUILD_ONLY=false
-DEPLOY_MODE=false # 新增 deploy 模式旗標
+DEPLOY_MODE=false # deploy 模式旗標
 
 # === 參數解析 ===
 while [[ "$#" -gt 0 ]]; do
@@ -121,13 +127,13 @@ while [[ "$#" -gt 0 ]]; do
     esac
 done
 
-# === 新增：處理 --deploy 模式 ===
+# === 處理 --deploy 模式 ===
 if [ "${DEPLOY_MODE}" = true ]; then
   if [ -z "${PROJECT_NAME}" ]; then
     echo "❌ PROJECT_NAME could not be determined from CMakeLists.txt. Cannot generate Containerfile."
     exit 1 # Triggers EXIT trap
   fi
-  generate_containerfile
+  # generate_containerfile
   echo "✅ --deploy mode finished."
   exit 0
 fi
@@ -139,7 +145,9 @@ cd "${BUILD_DIR}"
 
 echo "⚙️ 準備 CMake 配置參數…"
 CMAKE_ARGS=() # 初始化 CMake 參數陣列
-CMAKE_ARGS+=("-DCMAKE_MODULE_PATH=${PROJECT_DIR}/cmake")
+
+# --- vcpkg 整合：傳入 vcpkg toolchain 檔案 ---
+CMAKE_ARGS+=("-DCMAKE_TOOLCHAIN_FILE=${VCPKG_TOOLCHAIN_FILE}")
 
 if [ "${RUN_TESTS}" = false ]; then
   CMAKE_ARGS+=("-DBUILD_TESTS=OFF")
@@ -148,10 +156,10 @@ else
   CMAKE_ARGS+=("-DBUILD_TESTS=ON")
 fi
 
-echo "⚙️ 執行 CMake 配置…"
+echo "⚙️ 執行 CMake 配置 (使用 vcpkg)..."
 cmake "${CMAKE_ARGS[@]}" ..
 
-echo "🔨 編譯中…"
+echo "🔨 編譯中 (vcpkg 會自動處理依賴下載)..."
 cmake --build .
 
 echo "✅ 建置完成！"
@@ -191,8 +199,7 @@ if [ -z "${PROJECT_NAME}" ]; then
   exit 1
 fi
 
-# --- 產出處理邏輯 (已優化) ---
-
+# --- 產出處理邏輯 ---
 # 尋找執行檔
 EXECUTABLE_PATH_IN_BUILD=""
 POSSIBLE_EXEC_PATHS=(
