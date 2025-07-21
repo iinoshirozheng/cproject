@@ -12,7 +12,12 @@ SETUP_SCRIPT_PATH="${CPPROJECT_DIR}/setup.sh"
 
 # --- [新增] 步驟一：確保 vcpkg 環境已就緒 ---
 echo "--- 正在執行 vcpkg 環境安裝與設定... ---"
-bash "${SETUP_VCPKG_SCRIPT}"
+if [[ "$SHELL" == *"/zsh" ]]; then
+    zsh "${SETUP_VCPKG_SCRIPT}"
+else
+    bash "${SETUP_VCPKG_SCRIPT}"
+fi
+
 echo "--- vcpkg 環境設定完成 ---"
 echo "" # 增加空行，讓輸出更美觀
 

@@ -45,14 +45,14 @@ check_environment() {
     # 檢查 VCPKG_ROOT 和 PATH 是否已正確設定
     VCPKG_ROOT_SET=false
     PATH_SET=false
-    if [ -n "$VCPKG_ROOT" ] && [ "$VCPKG_ROOT" == "$VCPKG_DIR" ]; then
+    if [[ -n "$VCPKG_ROOT" ]] && [[ "$VCPKG_ROOT" == "$VCPKG_DIR" ]]; then
         VCPKG_ROOT_SET=true
     fi
     if [[ ":$PATH:" == *":$VCPKG_DIR:"* ]]; then
         PATH_SET=true
     fi
 
-    if [ "$VCPKG_ROOT_SET" = true ] && [ "$PATH_SET" = true ]; then
+    if [[ "$VCPKG_ROOT_SET" = true ]] && [[ "$PATH_SET" = true ]]; then
         echo "✅ VCPKG_ROOT 與 PATH 環境變數已正確設定！"
     else
         echo "⚠️  為了能在任何地方使用 vcpkg 指令，請進行以下設定："

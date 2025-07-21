@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 
 # === helper: 顯示用法 ===
 usage() {
@@ -30,7 +30,7 @@ EOF
 SCRIPT_DIR="$(cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd)"
 
 # === 若無參數，顯示使用說明 ===
-if [ $# -lt 1 ]; then
+if [[ $# -lt 1 ]]; then
   echo ""
   echo "⚠️  請帶入參數："
   echo ""
@@ -42,12 +42,14 @@ SUBCMD="$1"; shift
 case "$SUBCMD" in
   create)
     CREATE_TYPE="executable" # 預設為執行檔
-    if [ "$1" == "--library" ]; then
+    # [修正] 改用 [[ ... ]] 進行字串比較
+    if [[ "$1" == "--library" ]]; then
       CREATE_TYPE="library"
       shift # 移除 --library 旗標
     fi
 
-    if [ $# -ne 1 ]; then
+    # [修正] 改用 [[ ... ]] 進行數字比較
+    if [[ $# -ne 1 ]]; then
       echo ""
       echo "❌ create 需要一個專案名稱！"
       echo ""
@@ -55,7 +57,8 @@ case "$SUBCMD" in
     fi
     NEW_PROJ="$1"
     
-    if [ ! -x "${SCRIPT_DIR}/create_project.sh" ]; then
+    # [修正] 改用 [[ ... ]] 進行檔案檢查
+    if [[ ! -x "${SCRIPT_DIR}/create_project.sh" ]]; then
       echo "❌ 找不到或無執行權限：${SCRIPT_DIR}/create_project.sh"
       exit 1
     fi
@@ -65,20 +68,21 @@ case "$SUBCMD" in
     exec bash "${SCRIPT_DIR}/create_project.sh" "${NEW_PROJ}" "${CREATE_TYPE}"
     ;;
     
-  # ... build 和 run 的部分保持不變 ...
   build)
     BUILD_ARGS="--build-only"
-    if [ $# -gt 1 ] || { [ $# -eq 1 ] && [ "$1" != "--test" ]; }; then
+    # [核心修正] 將複雜的條件判斷改用 [[ ... ]]
+    if [[ $# -gt 1 || ( $# -eq 1 && "$1" != "--test" ) ]]; then
       echo ""
       echo "❌ build 只能接受 --test（或不帶參數）"
       echo ""
       usage
-    elif [ $# -eq 1 ] && [ "$1" == "--test" ]; then
+    elif [[ $# -eq 1 && "$1" == "--test" ]]; then
       BUILD_ARGS="--build-only --test"
       shift
     fi
 
-    if [ ! -x "./run.sh" ]; then
+    # [修正] 改用 [[ ... ]]
+    if [[ ! -x "./run.sh" ]]; then
       echo ""
       echo "❌ 找不到可執行的 run.sh，請確認檔案存在並加上執行權限"
       echo ""
@@ -89,17 +93,19 @@ case "$SUBCMD" in
     ;;
   run)
     RUN_ARGS=()
-    if [ $# -gt 1 ] || { [ $# -eq 1 ] && [ "$1" != "--test" ]; }; then
+    # [核心修正] 將複雜的條件判斷改用 [[ ... ]]
+    if [[ $# -gt 1 || ( $# -eq 1 && "$1" != "--test" ) ]]; then
       echo ""
       echo "❌ run 只能接受 --test（或不帶參數）"
       echo ""
       usage
-    elif [ $# -eq 1 ] && [ "$1" == "--test" ]; then
+    elif [[ $# -eq 1 && "$1" == "--test" ]]; then
       RUN_ARGS+=("--test")
       shift
     fi
 
-    if [ ! -x "./run.sh" ]; then
+    # [修正] 改用 [[ ... ]]
+    if [[ ! -x "./run.sh" ]]; then
       echo ""
       echo "❌ 找不到可執行的 run.sh，請確認檔案存在並加上執行權限"
       echo ""
