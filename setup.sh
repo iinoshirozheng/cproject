@@ -6,10 +6,7 @@ CPPROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # 設定 VCPKG_ROOT 環境變數，指向此工具庫內的 vcpkg
 export VCPKG_ROOT="${CPPROJECT_DIR}/vcpkg"
-
-# 將 cproject 工具庫的路徑加入到 PATH 的最前面
-# 這樣 shell 才能在任何地方找到 cproject.sh 這個指令
-export PATH="${CPPROJECT_DIR}:${PATH}"
+export PATH="${VCPKG_ROOT}:${PATH}"
 
 # --- [新增] 設定 cproject 別名 ---
 # 使用絕對路徑，確保別名在任何地方都有效
