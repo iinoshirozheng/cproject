@@ -4,62 +4,40 @@
 set -e
 
 # --- 路徑設定 ---
-# 取得此腳本所在的目錄，也就是 cppackage 的根目錄
+# 取得此腳本所在的目錄，也就是 cproject 工具的根目錄
 CPPROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SETUP_VCPKG_SCRIPT="${CPPROJECT_DIR}/setup_vcpkg.sh"
-SETUP_SCRIPT_PATH="${CPPROJECT_DIR}/setup.sh"
+CPROJECT_EXECUTABLE="${CPPROJECT_DIR}/cproject.sh"
 
+echo "--- cproject 安裝程序 ---"
 
-# --- [新增] 步驟一：確保 vcpkg 環境已就緒 ---
-echo "--- 正在執行 vcpkg 環境安裝與設定... ---"
+# 步驟一：確保主腳本有執行權限
+echo "1. 正在設定 cproject 主腳本權限..."
+chmod +x "${CPROJECT_EXECUTABLE}"
+echo "✅ 主腳本權限設定完成。"
+echo ""
+
+# 步驟二：執行 vcpkg 環境安裝與設定
+echo "2. 正在執行 vcpkg 環境安裝與設定..."
+# 根據 shell 類型執行 setup_vcpkg.sh
 if [[ "$SHELL" == *"/zsh" ]]; then
     zsh "${SETUP_VCPKG_SCRIPT}"
 else
     bash "${SETUP_VCPKG_SCRIPT}"
 fi
+echo "✅ vcpkg 環境設定完成。"
+echo ""
 
-echo "--- vcpkg 環境設定完成 ---"
-echo "" # 增加空行，讓輸出更美觀
 
-
-# --- 步驟二：偵測 Shell 設定檔 ---
-SHELL_PROFILE=""
-# $SHELL 環境變數通常會指向使用者預設 shell 的路徑 (例如 /bin/zsh)
-if [[ "$SHELL" == *"/zsh" ]]; then
-    SHELL_PROFILE="$HOME/.zprofile"
-elif [[ "$SHELL" == *"/bash" ]]; then
-    SHELL_PROFILE="$HOME/.bash_profile"
-else
-    # 對於其他 shell 或無法確定的情況，使用通用的 .profile
-    SHELL_PROFILE="$HOME/.profile"
-fi
-
-echo "🔎 正在檢查您的 Shell 設定檔: ${SHELL_PROFILE}"
-
-# --- 步驟三：準備要加入的指令 ---
-# 使用雙引號確保路徑中的空格等被正確處理
-SOURCE_COMMAND="source \"${SETUP_SCRIPT_PATH}\""
-
-# --- 步驟四：檢查是否已設定，若無才加入 ---
-# grep -q: 安靜模式，不輸出結果
-# grep -F: 將搜尋內容視為固定字串，而不是正則表達式
-# grep -x: 精確匹配整行
-if grep -qFx -- "${SOURCE_COMMAND}" "${SHELL_PROFILE}" &> /dev/null; then
-    echo "✅ 設定指令已存在於 ${SHELL_PROFILE} 中，無需任何操作。"
-else
-    echo "🔧 正在將 cproject 環境設定指令加入到 ${SHELL_PROFILE}..."
-    # 為了美觀，先加入一個空行和註解
-    echo "" >> "${SHELL_PROFILE}"
-    echo "# Added by cproject installer to setup environment" >> "${SHELL_PROFILE}"
-    echo "${SOURCE_COMMAND}" >> "${SHELL_PROFILE}"
-    
-    echo "✅ 成功加入設定！"
-    echo ""
-    echo "💡 請執行以下指令，或重開您的終端機，來讓設定立即生效："
-    echo "   source ${SHELL_PROFILE}"
-
-    # 顯示成功訊息，讓使用者知道環境已設定
-    echo "   VCPKG_ROOT: ${VCPKG_ROOT}"
-    echo "   PATH:       cproject 工具路徑已加入"
-    echo "   Alias:      現在您可以在任何地方使用 'cproject' 指令了。"
-fi
+# 步驟三：顯示手動設定 PATH 的指引
+echo "--- 👉 最後一步：手動設定環境變數 ---"
+echo "為了能在任何地方使用 'cproject' 指令，請將下列指令"
+echo "複製並貼到您的 shell 設定檔中 (例如 ~/.zshrc, ~/.bash_profile 或 ~/.profile)："
+echo ""
+echo -e "\033[0;32m# --- cproject Environment ---"
+echo -e "export CPROJECT_HOME=\"${CPPROJECT_DIR}\""
+echo -e "export PATH=\"\$CPROJECT_HOME:\$PATH\"\033[0m"
+echo ""
+echo "加入後，請執行 'source <您的設定檔>' 或重開一個新的終端機來讓設定生效。"
+echo ""
+echo "🎉 安裝完成！"
