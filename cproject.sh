@@ -14,6 +14,7 @@ TOOL_SCRIPT_DIR=$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")
 # 執行建置
 # 參數:
 # $1: Enable Tests ("true" or "false")
+#【最終修正版 v2】專案建立函式
 do_create() {
     local PROJECT_NAME=""
     local PROJECT_TYPE="executable"
@@ -138,7 +139,6 @@ EOF
     if [ "${PROJECT_TYPE}" == "library" ]; then
         cat > "${PROJECT_DIR}/CMakeLists.txt" <<EOF
 cmake_minimum_required(VERSION 3.18)
-# 【已修正】移除 PROJECT_NAME 前的 '\'，讓 shell 替換變數
 project(${PROJECT_NAME}
         VERSION 1.0.0
         LANGUAGES CXX)
@@ -153,21 +153,20 @@ if(BUILD_TESTS)
   include(GoogleTest)
 endif()
 
-# 【已修正】移除 PROJECT_NAME 和其他變數前的 '\'
 add_library(${PROJECT_NAME} STATIC src/${PROJECT_NAME}.cpp)
 target_include_directories(${PROJECT_NAME} PUBLIC \${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(${PROJECT_NAME} PRIVATE \${THIRD_PARTY_LIBS})
 
 if(BUILD_TESTS)
   add_executable(run_tests tests/basic_test.cpp)
-  target_link_libraries(run_tests PRIVATE ${PROJECT_NAME} GTest::GTest GTest::Main)
+  # 【已修正】使用 vcpkg 提供的小寫 target 名稱
+  target_link_libraries(run_tests PRIVATE ${PROJECT_NAME} GTest::gtest GTest::gtest_main)
   gtest_discover_tests(run_tests)
 endif()
 EOF
     else # executable
         cat > "${PROJECT_DIR}/CMakeLists.txt" <<EOF
 cmake_minimum_required(VERSION 3.18)
-# 【已修正】移除 PROJECT_NAME 前的 '\'，讓 shell 替換變數
 project(${PROJECT_NAME}
         VERSION 1.0.0
         LANGUAGES CXX)
@@ -182,13 +181,13 @@ if(BUILD_TESTS)
   include(GoogleTest)
 endif()
 
-# 【已修正】移除 PROJECT_NAME 和其他變數前的 '\'
 add_executable(${PROJECT_NAME} src/main.cpp)
 target_link_libraries(${PROJECT_NAME} PRIVATE \${THIRD_PARTY_LIBS})
 
 if(BUILD_TESTS)
   add_executable(run_tests tests/basic_test.cpp)
-  target_link_libraries(run_tests PRIVATE GTest::GTest GTest::Main)
+  # 【已修正】使用 vcpkg 提供的小寫 target 名稱
+  target_link_libraries(run_tests PRIVATE GTest::gtest GTest::gtest_main)
   gtest_discover_tests(run_tests)
 endif()
 EOF
@@ -241,11 +240,43 @@ do_build() {
 }
 
 # 執行測試
+#【整合版】執行測試函式，根據參數決定模式
 do_test() {
+    local is_ci_mode=false
+    # 步驟 1: 解析傳入 do_test 的參數
+    if [[ "$1" == "--detail" ]]; then
+        is_ci_mode=true
+    fi
+
+    # 步驟 2: 無論何種模式，都先建置測試
     do_build "true"
-    echo "🏃‍♂️ 執行 CTest (Preset: default)..."
-    ctest --preset default
-    echo "✅ 測試完成。"
+
+    # 步驟 3: 根據模式執行不同的測試方法
+    if [[ "$is_ci_mode" == "true" ]]; then
+        # --- CI/CD 模式 ---
+        echo "🤖 執行 CI/CD 測試 (Preset: default)..."
+        
+        # --output-on-failure: 只有在測試失敗時才顯示詳細日誌
+        # --output-junit: 產生 Jenkins, GitHub Actions 等工具相容的報告
+        ctest --preset default --output-on-failure --output-junit "ctest_results.xml"
+
+        echo "✅ CI/CD 測試完成，報告已儲存至 ctest_results.xml"
+    else
+        # --- 開發者互動模式 ---
+        local test_executable_path="./build/test/run_tests"
+
+        if [ -f "${test_executable_path}" ]; then
+            echo "🏃‍♂️ 直接執行 Google Test (${test_executable_path})..."
+            echo "------------------------------------------"
+            # 直接執行，此時 Google Test 會偵測到 TTY 並輸出顏色
+            "${test_executable_path}"
+            echo "------------------------------------------"
+            echo "✅ 測試完成。"
+        else
+            echo "❌ 錯誤：找不到測試執行檔於 ${test_executable_path}" >&2
+            exit 1
+        fi
+    fi
 }
 
 # 執行主程式
@@ -329,62 +360,118 @@ copy_artifacts() {
     echo "✅ 產出複製完成。"
 }
 
+do_pkg_search() {
+    local lib_name="$1"
+    if [[ -z "$lib_name" ]]; then
+        echo "❌ 錯誤：請提供要搜尋的函式庫名稱。" >&2
+        echo "   用法: cproject pkg search <lib-name>" >&2
+        exit 1
+    fi
+    echo "🔎 正在透過 vcpkg search 搜尋 '${lib_name}'..."
+    vcpkg search "$lib_name"
+}
 
-# 新增依賴函數
-do_add() {
+# --- pkg add ---
+do_pkg_add() {
     local lib_name="$1"
 
     # --- 前置檢查 ---
-    if ! command -v jq &> /dev/null; then
-        echo "❌ 錯誤：此功能需要 'jq' (一個命令列 JSON 處理器)。" >&2
-        echo "   請先安裝 jq (例如: sudo apt-get install jq 或 brew install jq)。" >&2
-        exit 1
-    fi
-    if [[ -z "$lib_name" ]]; then
-        echo "❌ 錯誤：請提供要新增的函式庫名稱。" >&2
-        echo "   用法: cproject add <lib-name>" >&2
-        exit 1
-    fi
+    if ! command -v jq &> /dev/null; then echo "❌ 錯誤：此功能需要 'jq'。" >&2; exit 1; fi
+    if ! command -v vcpkg &> /dev/null; then echo "❌ 錯誤：找不到 'vcpkg' 指令。" >&2; exit 1; fi
+    if [[ -z "$lib_name" ]]; then echo "❌ 錯誤：請提供函式庫名稱。" >&2; echo "   用法: cproject pkg add <lib-name>" >&2; exit 1; fi
     local vcpkg_file="vcpkg.json"
     local cmake_deps_file="cmake/dependencies.cmake"
-    if [[ ! -f "${vcpkg_file}" || ! -f "${cmake_deps_file}" ]]; then
-        echo "❌ 錯誤：找不到 vcpkg.json 或 cmake/dependencies.cmake。" >&2
-        echo "   請確認您位於 cproject 專案的根目錄下。" >&2
-        exit 1
-    fi
+    if [[ ! -f "${vcpkg_file}" || ! -f "${cmake_deps_file}" ]]; then echo "❌ 錯誤：找不到設定檔，請確認位於專案根目錄下。" >&2; exit 1; fi
 
-    # --- 步驟 1: 更新 vcpkg.json (加入冪等性檢查) ---
-    if jq -e ".dependencies[] | select(. == \"$lib_name\")" "${vcpkg_file}" > /dev/null; then
-        echo "ℹ️  依賴 '${lib_name}' 已經存在於 ${vcpkg_file} 中，跳過。"
-    else
+    # --- vcpkg search 驗證 ---
+    echo "🔎 正在透過 vcpkg search 驗證函式庫 '${lib_name}'..."
+    local search_result; search_result=$(vcpkg search "$lib_name")
+    local exact_match; exact_match=$(echo "${search_result}" | grep -E "^${lib_name}[[:space:]]" | head -n 1)
+    if [[ -z "$exact_match" ]]; then
+        echo "❌ 錯誤：在 vcpkg 中找不到名為 '${lib_name}' 的函式庫。" >&2
+        echo "   最接近的搜尋結果如下：" >&2; echo "${search_result}" >&2; exit 1;
+    fi
+    echo "✅ 找到相符的函式庫: ${exact_match}"
+
+    # --- 更新 vcpkg.json ---
+    if ! jq -e ".dependencies[] | select(. == \"$lib_name\")" "${vcpkg_file}" > /dev/null; then
         echo "📝 正在將 '${lib_name}' 加入到 ${vcpkg_file}..."
         jq --arg lib "$lib_name" '.dependencies |= . + [$lib] | .dependencies |= unique' "${vcpkg_file}" > "${vcpkg_file}.tmp" && mv "${vcpkg_file}.tmp" "${vcpkg_file}"
     fi
 
-    # --- 步驟 2: 自動更新 cmake/dependencies.cmake (加入冪等性檢查) ---
-    # 建立一個通用的 PackageName (例如 fmt -> Fmt, spdlog -> Spdlog)
-    local capitalized_lib_name="$(tr '[:lower:]' '[:upper:]' <<< ${lib_name:0:1})${lib_name:1}"
+    # --- 執行 vcpkg install 並捕獲輸出 ---
+    echo "📦 正在安裝依賴... (vcpkg install)"
+    local install_output; install_output=$(vcpkg install | tee /dev/tty)
 
-    if grep -q "find_package(${capitalized_lib_name} " "${cmake_deps_file}"; then
-        echo "ℹ️  '${capitalized_lib_name}' 看起來已經設定在 ${cmake_deps_file} 中，跳過。"
+    # --- 解析 vcpkg 輸出以取得 CMake 用法 ---
+    echo "⚙️  正在解析 CMake 用法..."
+    local usage_block; usage_block=$(echo "${install_output}" | awk -v lib="${lib_name}" '/The package/ && $3==lib {p=1} p && /^$/ {p=0} p')
+    local package_name; package_name=$(echo "${usage_block}" | grep "find_package" | sed -E 's/.*find_package\(([^ ]+).*/\1/')
+    local link_targets; link_targets=$(echo "${usage_block}" | grep "target_link_libraries" | sed -E 's/.*(PRIVATE|PUBLIC|INTERFACE) //; s/\).*//')
+
+    # --- 使用解析到的資訊更新 cmake/dependencies.cmake ---
+    if [[ -n "$package_name" && -n "$link_targets" ]]; then
+        if grep -q "find_package(${package_name} " "${cmake_deps_file}"; then
+            echo "ℹ️  '${package_name}' 看起來已經設定在 ${cmake_deps_file} 中，跳過。"
+        else
+            echo "📝 正在使用精確的 target 自動更新 ${cmake_deps_file}..."
+            echo "" >> "${cmake_deps_file}"
+            echo "# Added by 'cproject pkg add' for ${lib_name}" >> "${cmake_deps_file}"
+            echo "find_package(${package_name} CONFIG REQUIRED)" >> "${cmake_deps_file}"
+            echo "list(APPEND THIRD_PARTY_LIBS ${link_targets})" >> "${cmake_deps_file}"
+        fi
     else
-        echo "📝 正在自動更新 ${cmake_deps_file}..."
-        # 在檔案末尾追加設定
-        echo "" >> "${cmake_deps_file}"
-        echo "# Added by 'cproject add' for ${lib_name}" >> "${cmake_deps_file}"
-        echo "find_package(${capitalized_lib_name} CONFIG REQUIRED)" >> "${cmake_deps_file}"
-        # 這是基於 vcpkg 常見慣例的猜測，對於大多數函式庫有效
-        echo "list(APPEND THIRD_PARTY_LIBS ${capitalized_lib_name}::${lib_name})" >> "${cmake_deps_file}"
+        echo "⚠️ 警告：無法自動解析 '${lib_name}' 的 CMake 用法，您可能需要手動修改 ${cmake_deps_file}。"
     fi
 
-    # --- 步驟 3: 顯示最終結果 ---
     echo ""
-    echo "✅ 成功將依賴 '${lib_name}' 加入專案！"
-    echo "   現在您可以執行 'cproject build' 來下載並連結該函式庫。"
-    echo "💡 提示：自動產生的 CMake target 名稱為 '${capitalized_lib_name}::${lib_name}'。"
-    echo "   如果此名稱不正確，請手動修改 '${cmake_deps_file}'。"
+    echo "✅ 成功新增並安裝依賴 '${lib_name}'！"
 }
 
+# --- pkg rm ---
+do_pkg_rm() {
+    local lib_name="$1"
+
+    # --- 前置檢查 ---
+    if ! command -v jq &> /dev/null; then echo "❌ 錯誤：此功能需要 'jq'。" >&2; exit 1; fi
+    if [[ -z "$lib_name" ]]; then echo "❌ 錯誤：請提供函式庫名稱。" >&2; echo "   用法: cproject pkg rm <lib-name>" >&2; exit 1; fi
+    local vcpkg_file="vcpkg.json"
+    local cmake_deps_file="cmake/dependencies.cmake"
+    if [[ ! -f "${vcpkg_file}" || ! -f "${cmake_deps_file}" ]]; then echo "❌ 錯誤：找不到設定檔，請確認位於專案根目錄下。" >&2; exit 1; fi
+
+    # --- 步驟 1: 從 vcpkg.json 移除 ---
+    if jq -e ".dependencies[] | select(. == \"$lib_name\")" "${vcpkg_file}" > /dev/null; then
+        echo "📝 正在從 ${vcpkg_file} 中移除 '${lib_name}'..."
+        jq "del(.dependencies[] | select(. == \"$lib_name\"))" "${vcpkg_file}" > "${vcpkg_file}.tmp" && mv "${vcpkg_file}.tmp" "${vcpkg_file}"
+    else
+        echo "ℹ️  依賴 '${lib_name}' 不存在於 ${vcpkg_file} 中，無需移除。"
+    fi
+
+    # --- 步驟 2: 從 cmake/dependencies.cmake 移除 ---
+    # 這個邏輯的核心是尋找當初 add 指令留下的註解標記
+    local anchor_comment="# Added by 'cproject pkg add' for ${lib_name}"
+    
+    # 先檢查標記是否存在
+    if grep -qF "${anchor_comment}" "${cmake_deps_file}"; then
+        echo "📝 正在從 ${cmake_deps_file} 中移除 '${lib_name}' 的 CMake 設定..."
+        
+        # 使用 sed 找到標記行(anchor)，並將其及後續兩行一併刪除
+        # sed -i 在不同系統行為有差異，使用臨時檔案更為可靠安全
+        sed "/${anchor_comment}/{N;N;d;}" "${cmake_deps_file}" > "${cmake_deps_file}.tmp" && mv "${cmake_deps_file}.tmp" "${cmake_deps_file}"
+        
+        # 移除可能留下的多餘空行，讓檔案更整潔
+        sed -i.bak '/^$/N;/^\n$/D' "${cmake_deps_file}" && rm -f "${cmake_deps_file}.bak"
+
+    else
+        echo "ℹ️  在 ${cmake_deps_file} 中找不到 '${lib_name}' 對應的設定區塊，無需移除。"
+    fi
+
+    # --- 步驟 3: 提示使用者 ---
+    echo ""
+    echo "✅ 成功從設定檔中移除依賴 '${lib_name}'！"
+    echo "   vcpkg 會在下次建置時自動清理不再需要的套件。"
+    echo "   您可以執行 'cproject build' 來更新專案狀態。"
+}
 
 # ==============================================================================
 # === 命令分派器 ===
@@ -399,20 +486,25 @@ usage() {
   cproject <command> [options]
 
 命令:
-  create [--library] <ProjectName>
-    ➤ 建立一個新的 C++ 專案。
+  常用指令
+    create [--library] <ProjectName>
+      ➤ 建立一個新的 C++ 專案。
+    build
+      ➤ 建置當前專案。
+    run
+      ➤ 建置並執行當前專案的主程式。
+    test [--cicd]
+      ➤ 執行測試 (使用 --cicd 以 CI 模式執行)。
 
-  add <lib-name>
-    ➤ 為當前專案新增一個 vcpkg 依賴。
-
-  build
-    ➤ 建置當前專案。
-
-  run
-    ➤ 建置並執行當前專案的主程式。
-
-  test
-    ➤ 為當前專案建置並執行所有測試。
+  套件管理
+    add <lib-name>
+      ➤ (推薦) 新增並安裝一個套件。
+    remove <lib-name>
+      ➤ 移除一個套件。
+    search <lib-name>
+      ➤ 搜尋套件。
+    pkg <add|rm|search>
+      ➤ (完整指令) 執行套件管理子命令。
 
 範例:
   cproject create MyApp
@@ -431,11 +523,9 @@ fi
 SUBCMD="$1"; shift
 
 case "$SUBCMD" in
+    # --- 專案生命週期指令 ---
     create)
         do_create "$@"
-        ;;
-    add)
-        do_add "$@"
         ;;
     build)
         do_build "false"
@@ -444,8 +534,40 @@ case "$SUBCMD" in
         do_run
         ;;
     test)
-        do_test
+        do_test "$@"
         ;;
+
+    # --- 【新增】套件管理的快捷指令 (Aliases) ---
+    add)
+        do_pkg_add "$@"
+        ;;
+    remove)
+        do_pkg_rm "$@"
+        ;;
+    search)
+        do_pkg_search "$@"
+        ;;
+
+    # --- 套件管理的完整指令 ---
+    pkg)
+        PKG_SUBCMD="$1"; shift
+        case "$PKG_SUBCMD" in
+            add)
+                do_pkg_add "$@"
+                ;;
+            rm)
+                do_pkg_rm "$@"
+                ;;
+            search)
+                do_pkg_search "$@"
+                ;;
+            *)
+                echo "❌ 未知的 pkg 子命令: '$PKG_SUBCMD'" >&2
+                usage
+                ;;
+        esac
+        ;;
+        
     *)
         echo "❌ 未知命令: $SUBCMD" >&2
         usage
