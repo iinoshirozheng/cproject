@@ -1,11 +1,11 @@
 #!/bin/bash
-
 # 當任何指令出錯時，立即退出
 set -e
 
 # === 取得工具鏈自身的目錄 ===
 # 這確保無論從哪裡執行 cproject，都能找到 vcpkg 等工具資源
-TOOL_SCRIPT_DIR="$(cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd)"
+# 解析符號連結，找到腳本的真實目錄
+TOOL_SCRIPT_DIR=$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")
 
 # ==============================================================================
 # === 核心功能函數 ===
@@ -16,85 +16,47 @@ TOOL_SCRIPT_DIR="$(cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd)"
 # $1: Enable Tests ("true" or "false")
 do_build() {
     local enable_tests="$1"
+    local preset_name="default"
+    if [[ "${enable_tests}" == "true" ]]; then
+        preset_name="test"
+    fi
 
-    # --- 路徑與檔案設定 ---
-    local project_dir
-    project_dir="$(pwd)"
-    local build_dir="${project_dir}/build"
-    local bin_dir="${project_dir}/bin"
-    local lib_dir="${project_dir}/lib"
+    local project_dir; project_dir="$(pwd)"
+    local build_dir="${project_dir}/build/${preset_name}" # Build dir is defined by preset
     local cmake_file="${project_dir}/CMakeLists.txt"
     local vcpkg_toolchain_file="${TOOL_SCRIPT_DIR}/vcpkg/scripts/buildsystems/vcpkg.cmake"
 
-    # --- 前置檢查 ---
-    if [[ ! -f "${cmake_file}" ]]; then
-        echo "❌ 錯誤：在當前目錄找不到 CMakeLists.txt。" >&2
-        echo "   請確認您位於專案的根目錄下。" >&2
-        exit 1
-    fi
-    if [[ ! -f "${vcpkg_toolchain_file}" ]]; then
-        echo "❌ 錯誤：找不到 vcpkg 工具鏈檔案: ${vcpkg_toolchain_file}" >&2
-        echo "   請確認 cproject 工具本身是否已成功安裝 (執行 install.sh)。" >&2
+    if [[ ! -f "${cmake_file}" || ! -f "${project_dir}/CMakePresets.json" ]]; then
+        echo "❌ 錯誤：找不到 CMakeLists.txt 或 CMakePresets.json。" >&2
         exit 1
     fi
 
-    # --- 解析專案名稱 ---
-    local project_name
-    project_name="$(grep -E '^[[:space:]]*project\(' "${cmake_file}" | head -n1 | sed -E 's/^[[:space:]]*project\(\s*([A-Za-z0-9_]+).*/\1/')"
-    if [[ -z "${project_name}" ]]; then
-        echo "❌ 錯誤：無法從 CMakeLists.txt 解析專案名稱。" >&2
-        exit 1
-    fi
-    
-    echo "▶️  專案名稱: ${project_name}"
+    # --- 透過環境變數傳遞工具鏈路徑給 Preset ---
+    export CPROJECT_VCPKG_TOOLCHAIN="${vcpkg_toolchain_file}"
 
-    # --- 清理舊的建置目錄 ---
     if [ -d "${build_dir}" ]; then
-        echo "🧹 正在移除舊的 build 目錄..."
+        echo "🧹 正在移除舊的 build 目錄: ${build_dir}"
         rm -rf "${build_dir}"
     fi
 
-    # --- CMake 配置 ---
-    echo "📦 建立新的 build 目錄: ${build_dir}"
-    mkdir -p "${build_dir}"
-    
-    local cmake_args=()
-    cmake_args+=("-DCMAKE_TOOLCHAIN_FILE=${vcpkg_toolchain_file}")
+    echo "⚙️  執行 CMake 配置 (Preset: ${preset_name})..."
+    cmake --preset "${preset_name}"
 
-    if [[ "${enable_tests}" == "true" ]]; then
-        echo "✅ 啟用測試模式 (BUILD_TESTS=ON)"
-        cmake_args+=("-DBUILD_TESTS=ON")
-    else
-        cmake_args+=("-DBUILD_TESTS=OFF")
-    fi
-
-    echo "⚙️  執行 CMake 配置..."
-    (cd "${build_dir}" && cmake "${cmake_args[@]}" ..)
-
-    # --- 編譯 ---
-    echo "🔨 編譯中..."
-    (cd "${build_dir}" && cmake --build .)
+    echo "🔨 編譯中 (Preset: ${preset_name})..."
+    cmake --build --preset "${preset_name}"
 
     echo "✅ 建置完成！"
-    
-    # --- 產出處理 ---
-    copy_artifacts "${project_name}" "${project_dir}" "${build_dir}" "${bin_dir}" "${lib_dir}"
+
+    local project_name
+    project_name="$(grep -E '^[[:space:]]*project\(' "${cmake_file}" | head -n1 | sed -E 's/^[[:space:]]*project\(\s*([A-Za-z0-9_]+).*/\1/')"
+    copy_artifacts "${project_name}" "${project_dir}" "${build_dir}" "${project_dir}/bin" "${project_dir}/lib"
 }
 
 # 執行測試
 do_test() {
-    local project_dir
-    project_dir="$(pwd)"
-    local build_dir="${project_dir}/build"
-    
-    echo "🧪 開始執行測試..."
-    
-    # 首先，確保是以測試模式建置的
     do_build "true"
-
-    echo "🏃‍♂️ 執行 CTest..."
-    (cd "${build_dir}" && ctest --output-on-failure)
-    
+    echo "🏃‍♂️ 執行 CTest (Preset: default)..."
+    ctest --preset default
     echo "✅ 測試完成。"
 }
 
@@ -117,6 +79,7 @@ do_run() {
     do_build "false"
 
     local executable_path="${bin_dir}/${project_name}"
+
     if [[ ! -x "${executable_path}" ]]; then
         echo "❌ 錯誤：找不到可執行的檔案或專案是函式庫。" >&2
         echo "   預期路徑: ${executable_path}" >&2
@@ -134,6 +97,7 @@ do_run() {
     echo "✅ 程式執行完畢。"
 }
 
+
 # 複製產出物 (函式庫或執行檔)
 copy_artifacts() {
     local project_name="$1"
@@ -141,9 +105,9 @@ copy_artifacts() {
     local build_dir="$3"
     local bin_dir="$4"
     local lib_dir="$5"
-    
+
     echo "📦 正在處理建置產出..."
-    
+
     # 清理舊的產出目錄
     rm -rf "${bin_dir}" "${lib_dir}"
 
@@ -155,17 +119,17 @@ copy_artifacts() {
     local lib_path
     lib_path=$(find "${build_dir}" -maxdepth 2 -type f \( -name "lib${project_name}.a" -o -name "lib${project_name}.so" -o -name "lib${project_name}.dylib" \))
 
+
     if [[ -n "${executable_path}" ]]; then
-        echo "  -> 找到執行檔，正在複製到 ${bin_dir}..."
+        echo " -> 找到執行檔，正在複製到 ${bin_dir}..."
         mkdir -p "${bin_dir}"
         cp "${executable_path}" "${bin_dir}/"
     elif [[ -n "${lib_path}" ]]; then
-        echo "  -> 找到函式庫，正在複製到 ${lib_dir}..."
+        echo " -> 找到函式庫，正在複製到 ${lib_dir}..."
         mkdir -p "${lib_dir}"
         find "${build_dir}" -maxdepth 2 -type f \( -name "lib${project_name}.a" -o -name "lib${project_name}.so" -o -name "lib${project_name}.dylib" \) -exec cp {} "${lib_dir}/" \;
-
         if [ -d "${project_dir}/include" ]; then
-            echo "  -> 正在複製公開標頭檔..."
+            echo " -> 正在複製公開標頭檔..."
             mkdir -p "${lib_dir}/include"
             rsync -a --delete "${project_dir}/include/" "${lib_dir}/include/"
         fi
@@ -173,13 +137,15 @@ copy_artifacts() {
         echo "⚠️  警告：在 ${build_dir} 中找不到任何預期的執行檔或函式庫。"
         return 1
     fi
+
     echo "✅ 產出複製完成。"
 }
+
 
 # 新增依賴函數
 do_add() {
     local lib_name="$1"
-    
+
     # --- 前置檢查 ---
     if ! command -v jq &> /dev/null; then
         echo "❌ 錯誤：此功能需要 'jq' (一個命令列 JSON 處理器)。" >&2
@@ -188,7 +154,7 @@ do_add() {
     fi
     if [[ -z "$lib_name" ]]; then
         echo "❌ 錯誤：請提供要新增的函式庫名稱。" >&2
-        echo "   用法: cproject add <library-name>" >&2
+        echo "   用法: cproject add <lib-name>" >&2
         exit 1
     fi
     if [[ ! -f "vcpkg.json" || ! -d "cmake" ]]; then
@@ -222,7 +188,7 @@ do_add() {
 
 # --- 使用說明 ---
 usage() {
-  cat <<EOF
+    cat <<EOF
 📘 cproject - 現代化的 C++ 專案管理器
 
 用法:
@@ -230,60 +196,55 @@ usage() {
 
 命令:
   create [--library] <ProjectName>
-      ➤ 建立一個新的 C++ 專案。
+    ➤ 建立一個新的 C++ 專案。
 
-  add <library-name>
-      ➤ 為當前專案新增一個 vcpkg 依賴。
+  add <lib-name>
+    ➤ 為當前專案新增一個 vcpkg 依賴。
 
   build
-      ➤ 建置當前專案。
+    ➤ 建置當前專案。
 
   run
-      ➤ 建置並執行當前專案的主程式。
+    ➤ 建置並執行當前專案的主程式。
 
   test
-      ➤ 為當前專案建置並執行所有測試。
+    ➤ 為當前專案建置並執行所有測試。
 
 範例:
   cproject create MyApp
   cproject add fmt
   cproject build
 EOF
-  exit 1
+    exit 1
 }
 
 # --- 主邏輯 ---
 if [[ $# -lt 1 ]]; then
-  echo "⚠️  請提供一個命令。" >&2
-  usage
+    echo "⚠️  請提供一個命令。" >&2
+    usage
 fi
 
 SUBCMD="$1"; shift
 
 case "$SUBCMD" in
-  create)
-    # [cite_start]create 命令邏輯不變，它呼叫外部腳本 [cite: 4]
-    exec bash "${TOOL_SCRIPT_DIR}/create_project.sh" "$@"
-    ;;
-
-  add)
-    do_add "$@"
-    ;;
-    
-  build)
-    do_build "false"
-    ;;
-
-  run)
-    do_run
-    ;;
-
-  test)
-    do_test
-    ;;
-
-  *)
-    echo "❌ 未知命令: $SUBCMD" >&2
-    usage
-    ;;
+    create)
+        # create 命令邏輯不變，它呼叫外部腳本
+        exec bash "${TOOL_SCRIPT_DIR}/create_project.sh" "$@"
+        ;;
+    add)
+        do_add "$@"
+        ;;
+    build)
+        do_build "false"
+        ;;
+    run)
+        do_run
+        ;;
+    test)
+        do_test
+        ;;
+    *)
+        echo "❌ 未知命令: $SUBCMD" >&2
+        usage
+        ;;
 esac

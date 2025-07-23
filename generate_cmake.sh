@@ -1,5 +1,4 @@
 #!/bin/bash
-
 # Exit on error
 set -e
 
@@ -9,7 +8,7 @@ PROJECT_TYPE="${2:-executable}"
 PROJECT_NAME=$(basename "${PROJECT_DIR}")
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# 1. 產生 vcpkg.json (維持不變)
+# 1. 產生 vcpkg.json
 echo "📝 正在產生 vcpkg.json (僅含 gtest)..."
 LOWERCASE_PROJECT_NAME=$(echo "$PROJECT_NAME" | tr '[:upper:]' '[:lower:]')
 cat > "${PROJECT_DIR}/vcpkg.json" <<EOF
@@ -22,7 +21,7 @@ cat > "${PROJECT_DIR}/vcpkg.json" <<EOF
 }
 EOF
 
-# 2. 產生 cmake/dependencies.cmake (維持不變)
+# 2. 產生 cmake/dependencies.cmake
 echo "📝 正在產生 cmake/dependencies.cmake..."
 mkdir -p "${PROJECT_DIR}/cmake"
 cat > "${PROJECT_DIR}/cmake/dependencies.cmake" <<EOF
@@ -31,12 +30,12 @@ find_package(GTest CONFIG REQUIRED)
 find_package(Threads REQUIRED)
 
 set(THIRD_PARTY_LIBS
-    Threads::Threads
+  Threads::Threads
 )
 EOF
 
-# 3. 【新增】產生 CMakePresets.json
-echo "📝 正在產生 CMakePresets.json..."
+# 3. 【修改】產生 CMakePresets.json (已移除 Ninja)
+echo "📝 正在產生 CMakePresets.json (使用預設建置工具)..."
 cat > "${PROJECT_DIR}/CMakePresets.json" <<EOF
 {
   "version": 3,
@@ -45,7 +44,6 @@ cat > "${PROJECT_DIR}/CMakePresets.json" <<EOF
       "name": "default",
       "displayName": "Default Config",
       "description": "Default build with tests disabled.",
-      "generator": "Ninja",
       "binaryDir": "\${sourceDir}/build/default",
       "cacheVariables": {
         "CMAKE_TOOLCHAIN_FILE": "\$env{CPROJECT_VCPKG_TOOLCHAIN}",
@@ -83,10 +81,8 @@ cat > "${PROJECT_DIR}/CMakePresets.json" <<EOF
 }
 EOF
 
-
-# 4. 產生主 CMakeLists.txt (明確列出檔案，無 GLOB)
+# 4. 產生主 CMakeLists.txt
 echo "📝 正在產生主 CMakeLists.txt (明確列出檔案)..."
-
 if [ "${PROJECT_TYPE}" == "library" ]; then
 # --- 函式庫版本的 CMakeLists.txt ---
 cat > "${PROJECT_DIR}/CMakeLists.txt" <<EOF
@@ -99,36 +95,37 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include(cmake/dependencies.cmake)
 
 option(BUILD_TESTS "Build unit tests" ON)
+
 if(BUILD_TESTS)
-    enable_testing()
-    include(GoogleTest)
+  enable_testing()
+  include(GoogleTest)
 endif()
 
 # --- 建立函式庫 (明確列出檔案) ---
 add_library(${PROJECT_NAME} STATIC
-    src/${PROJECT_NAME}.cpp
+  src/${PROJECT_NAME}.cpp
 )
-target_include_directories(${PROJECT_NAME} PUBLIC 
-    \${CMAKE_CURRENT_SOURCE_DIR}/include
+
+target_include_directories(${PROJECT_NAME} PUBLIC
+  \${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
-    \${THIRD_PARTY_LIBS}
+  \${THIRD_PARTY_LIBS}
 )
 
 # --- 建置測試 (明確列出檔案) ---
 if(BUILD_TESTS)
-    add_executable(run_tests
-        tests/basic_test.cpp
-    )
-    target_link_libraries(run_tests PRIVATE 
-        ${PROJECT_NAME} 
-        GTest::GTest GTest::Main
-    )
-    gtest_discover_tests(run_tests)
+  add_executable(run_tests
+    tests/basic_test.cpp
+  )
+  target_link_libraries(run_tests PRIVATE
+    ${PROJECT_NAME}
+    GTest::GTest GTest::Main
+  )
+  gtest_discover_tests(run_tests)
 endif()
 EOF
-
 else
 # --- 執行檔版本的 CMakeLists.txt ---
 cat > "${PROJECT_DIR}/CMakeLists.txt" <<EOF
@@ -141,30 +138,32 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include(cmake/dependencies.cmake)
 
 option(BUILD_TESTS "Build unit tests" ON)
+
 if(BUILD_TESTS)
-    enable_testing()
-    include(GoogleTest)
+  enable_testing()
+  include(GoogleTest)
 endif()
 
 # --- 建立執行檔 (明確列出檔案) ---
 add_executable(${PROJECT_NAME}
-    src/main.cpp
+  src/main.cpp
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
-    \${THIRD_PARTY_LIBS}
+  \${THIRD_PARTY_LIBS}
 )
 
 # --- 建置測試 (明確列出檔案) ---
 if(BUILD_TESTS)
-    add_executable(run_tests
-        tests/basic_test.cpp
-    )
-    target_link_libraries(run_tests PRIVATE 
-        ${PROJECT_NAME} 
-        GTest::GTest GTest::Main
-    )
-    gtest_discover_tests(run_tests)
+  add_executable(run_tests
+    tests/basic_test.cpp
+  )
+  target_link_libraries(run_tests PRIVATE
+    ${PROJECT_NAME}
+    GTest::GTest
+    GTest::Main
+  )
+  gtest_discover_tests(run_tests)
 endif()
 EOF
 fi

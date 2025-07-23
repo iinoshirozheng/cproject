@@ -17,8 +17,6 @@
 # CMake build directory
 build/
 cmake-build-*/
-third_party/
-third_party_tmp/
 
 # VSCode specific
 .vscode/*

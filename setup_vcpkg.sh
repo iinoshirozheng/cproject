@@ -1,5 +1,4 @@
 #!/bin/bash
-
 # 當任何指令出錯時，立即退出
 set -e
 
@@ -15,7 +14,7 @@ PERFORM_UPDATE=false
 # --- 函式：顯示用法 ---
 usage() {
     echo "用法: $0 [--update]"
-    echo "    --update   更新 vcpkg 到其遠端分支的最新版本。"
+    echo "  --update   更新 vcpkg 到其遠端分支的最新版本。"
     exit 1
 }
 
@@ -30,13 +29,13 @@ check_environment() {
         SHELL_PROFILE="$HOME/.zshrc"
         # macOS 的 .zprofile
         if [[ "$(uname)" == "Darwin" ]]; then
-             SHELL_PROFILE="$HOME/.zprofile"
+            SHELL_PROFILE="$HOME/.zprofile"
         fi
     elif [[ "$SHELL" == *"/bash" ]]; then
         SHELL_PROFILE="$HOME/.bashrc"
         # macOS 的 Bash 可能是 .bash_profile
         if [[ "$(uname)" == "Darwin" ]]; then
-             SHELL_PROFILE="$HOME/.bash_profile"
+            SHELL_PROFILE="$HOME/.bash_profile"
         fi
     else
         SHELL_PROFILE="$HOME/.profile"
@@ -71,7 +70,6 @@ check_environment() {
 
 # --- 函式：主邏輯 ---
 main() {
-    # ... (步驟 1 和 2 的邏輯不變)
     if ! command -v git &> /dev/null; then
         echo "❌ 錯誤: 此腳本需要 git，請先安裝 git。"
         exit 1
