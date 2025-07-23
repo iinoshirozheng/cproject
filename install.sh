@@ -3,12 +3,9 @@
 set -e
 
 # --- 路徑設定 ---
-# 取得此腳本所在的目錄，也就是 cproject 工具的根目錄
 CPPROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SETUP_VCPKG_SCRIPT="${CPPROJECT_DIR}/setup_vcpkg.sh"
 CPROJECT_EXECUTABLE="${CPPROJECT_DIR}/cproject.sh"
-
-# 【新增】定義 bin 目錄和最終的指令路徑
 BIN_DIR="${CPPROJECT_DIR}/bin"
 PUBLIC_CPROJECT_CMD="${BIN_DIR}/cproject"
 
@@ -20,11 +17,9 @@ chmod +x "${CPROJECT_EXECUTABLE}"
 echo "✅ 主腳本權限設定完成。"
 echo ""
 
-# 【新增】步驟二：建立 bin 目錄並設定符號連結
+# 步驟二：建立 bin 目錄並設定符號連結
 echo "2. 正在建立公開指令..."
 mkdir -p "${BIN_DIR}"
-# 建立一個從 bin/cproject 指向 cproject.sh 的符號連結
-# -s: symbolic, -f: force (如果已存在則覆蓋)
 ln -sf "${CPROJECT_EXECUTABLE}" "${PUBLIC_CPROJECT_CMD}"
 echo "✅ 指令 'cproject' 已設定於: ${PUBLIC_CPROJECT_CMD}"
 echo ""
@@ -39,15 +34,57 @@ fi
 echo "✅ vcpkg 環境設定完成。"
 echo ""
 
-# 【修改】步驟四：顯示手動設定 PATH 的指引 (只加入 bin 目錄)
-echo "--- 👉 最後一步：手動設定環境變數 ---"
-echo "為了能在任何地方使用 'cproject' 指令，請將下列指令"
-echo "複製並貼到您的 shell 設定檔中 (例如 ~/.zshrc, ~/.bash_profile 或 ~/.profile)："
-echo ""
-echo -e "\033[0;32m# --- cproject Environment ---"
-echo -e "export CPROJECT_HOME=\"${CPPROJECT_DIR}\""
-echo -e "export PATH=\"\$CPROJECT_HOME/bin:\$PATH\"\033[0m" # 只將 bin 目錄加入 PATH
-echo ""
-echo "加入後，請執行 'source <your-shell-config-file>' 或重開一個新的終端機來讓設定生效。"
-echo ""
-echo "🎉 安裝完成！"
+# 步驟四：【已修正】自動設定環境變數
+echo "--- 👉 最後一步：設定環境變數 ---"
+SHELL_PROFILE=""
+if [[ "$SHELL" == *"/zsh" ]]; then
+    SHELL_PROFILE="$HOME/.zshrc"
+elif [[ "$SHELL" == *"/bash" ]]; then
+    SHELL_PROFILE="$HOME/.bash_profile" # For macOS default bash
+    if [[ ! -f "$SHELL_PROFILE" ]]; then # For Linux bash
+        SHELL_PROFILE="$HOME/.bashrc"
+    fi
+else
+    SHELL_PROFILE="$HOME/.profile"
+fi
+
+# 【已修正】定義正確的環境變數設定
+# 使用單引號和雙引號組合，確保變數只在需要時展開，且路徑正確
+CPROJECT_PATH_LINE="export PATH=\"${CPPROJECT_DIR}/bin:\$PATH\""
+VCPKG_ROOT_LINE="export VCPKG_ROOT=\"${CPPROJECT_DIR}/vcpkg\""
+VCPKG_PATH_LINE="export PATH=\"\$VCPKG_ROOT:\$PATH\""
+
+if [[ -f "$SHELL_PROFILE" ]]; then
+    # 檢查是否已存在 cproject 的設定
+    if ! grep -q "# cproject Environment" "$SHELL_PROFILE"; then
+        echo "為了能在任何地方使用 'cproject' 和 'vcpkg' 指令，需要將以下設定加入到您的 shell 設定檔中："
+        echo ""
+        echo "   檔案: ${SHELL_PROFILE}"
+        echo "   -------------------------------------------------------"
+        echo "   ${CPROJECT_PATH_LINE}"
+        echo "   ${VCPKG_ROOT_LINE}"
+        echo "   ${VCPKG_PATH_LINE}"
+        echo "   -------------------------------------------------------"
+        echo ""
+        read -p "❓ 是否要自動為您設定? [Y/n] " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ || -z $REPLY ]]; then
+            echo "✅ 正在為您自動設定..."
+            echo "" >> "$SHELL_PROFILE"
+            echo "# --- cproject Environment ---" >> "$SHELL_PROFILE"
+            echo "${CPROJECT_PATH_LINE}" >> "$SHELL_PROFILE"
+            echo "${VCPKG_ROOT_LINE}" >> "$SHELL_PROFILE"
+            echo "${VCPKG_PATH_LINE}" >> "$SHELL_PROFILE"
+            echo ""
+            echo ""
+            echo "設定完成！請重開一個新的終端機來讓設定生效。"
+        else
+            echo "好的，請手動將以上指令加入您的設定檔。"
+        fi
+    else
+        echo "✅ 環境變數看起來已經設定過了。"
+        echo "   如果您遇到問題，請手動檢查檔案: ${SHELL_PROFILE}"
+    fi
+else
+    echo "⚠️ 找不到您的 shell 設定檔，請手動設定..."
+fi

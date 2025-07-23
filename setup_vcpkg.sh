@@ -18,56 +18,6 @@ usage() {
     exit 1
 }
 
-# --- [新增] 函式：檢查環境變數並提供設定指引 ---
-check_environment() {
-    echo "---"
-    echo "🔎 正在檢查環境變數設定..."
-
-    # 偵測使用者的 shell 設定檔
-    SHELL_PROFILE=""
-    if [[ "$SHELL" == *"/zsh" ]]; then
-        SHELL_PROFILE="$HOME/.zshrc"
-        # macOS 的 .zprofile
-        if [[ "$(uname)" == "Darwin" ]]; then
-            SHELL_PROFILE="$HOME/.zprofile"
-        fi
-    elif [[ "$SHELL" == *"/bash" ]]; then
-        SHELL_PROFILE="$HOME/.bashrc"
-        # macOS 的 Bash 可能是 .bash_profile
-        if [[ "$(uname)" == "Darwin" ]]; then
-            SHELL_PROFILE="$HOME/.bash_profile"
-        fi
-    else
-        SHELL_PROFILE="$HOME/.profile"
-    fi
-
-    # 檢查 VCPKG_ROOT 和 PATH 是否已正確設定
-    VCPKG_ROOT_SET=false
-    PATH_SET=false
-    if [[ -n "$VCPKG_ROOT" ]] && [[ "$VCPKG_ROOT" == "$VCPKG_DIR" ]]; then
-        VCPKG_ROOT_SET=true
-    fi
-    if [[ ":$PATH:" == *":$VCPKG_DIR:"* ]]; then
-        PATH_SET=true
-    fi
-
-    if [[ "$VCPKG_ROOT_SET" = true ]] && [[ "$PATH_SET" = true ]]; then
-        echo "✅ VCPKG_ROOT 與 PATH 環境變數已正確設定！"
-    else
-        echo "⚠️  為了能在任何地方使用 vcpkg 指令，請進行以下設定："
-        echo ""
-        echo "   將以下兩行指令加入到您的 shell 設定檔中："
-        echo "   檔案路徑: ${SHELL_PROFILE}"
-        echo ""
-        echo "   -------------------------------------------------------"
-        echo "   export VCPKG_ROOT=\"${VCPKG_DIR}\""
-        echo "   export PATH=\"\$VCPKG_ROOT:\$PATH\""
-        echo "   -------------------------------------------------------"
-        echo ""
-        echo "   加入後，請執行 'source ${SHELL_PROFILE}' 或重開終端機來讓設定生效。"
-    fi
-}
-
 # --- 函式：主邏輯 ---
 main() {
     if ! command -v git &> /dev/null; then
@@ -105,8 +55,6 @@ main() {
 
     echo "🎉 vcpkg 環境已準備就緒！"
 
-    # [新增] 在結尾呼叫環境檢查函式
-    check_environment
 }
 
 

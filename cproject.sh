@@ -14,6 +14,194 @@ TOOL_SCRIPT_DIR=$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")
 # 執行建置
 # 參數:
 # $1: Enable Tests ("true" or "false")
+do_create() {
+    local PROJECT_NAME=""
+    local PROJECT_TYPE="executable"
+
+    # 1. 解析參數
+    while [[ "$#" -gt 0 ]]; do
+        case $1 in
+            --library)
+                PROJECT_TYPE="library"
+                shift
+                ;;
+            *)
+                if [[ -z "$PROJECT_NAME" ]]; then
+                    PROJECT_NAME="$1"
+                else
+                    echo "❌ 錯誤：無法辨識的參數 $1" >&2
+                    exit 1
+                fi
+                shift
+                ;;
+        esac
+    done
+
+    if [[ -z "$PROJECT_NAME" ]]; then
+        echo "❌ 錯誤：請提供專案名稱。" >&2
+        echo "   用法: cproject create [--library] <ProjectName>" >&2
+        exit 1
+    fi
+
+    local PROJECT_DIR="$(pwd)/${PROJECT_NAME}"
+
+    if [ -d "${PROJECT_DIR}" ]; then
+        echo "❌ 錯誤：目標資料夾 '${PROJECT_DIR}' 已經存在。" >&2
+        exit 1
+    fi
+
+    echo "🛠  正在生成專案：${PROJECT_NAME}"
+    echo "🔩 專案類型：${PROJECT_TYPE}"
+    echo "📂 專案目錄：${PROJECT_DIR}"
+
+    # 2. 建立目錄與原始碼檔案
+    mkdir -p "${PROJECT_DIR}/src" "${PROJECT_DIR}/tests" "${PROJECT_DIR}/cmake"
+
+    if [ "${PROJECT_TYPE}" == "library" ]; then
+        echo "📝 創建函式庫檔案 (src/ and include/)..."
+        mkdir -p "${PROJECT_DIR}/include/${PROJECT_NAME}"
+        cat > "${PROJECT_DIR}/include/${PROJECT_NAME}/${PROJECT_NAME}.h" <<EOF
+#pragma once
+#include <string>
+std::string get_lib_name();
+EOF
+        cat > "${PROJECT_DIR}/src/${PROJECT_NAME}.cpp" <<EOF
+#include "${PROJECT_NAME}/${PROJECT_NAME}.h"
+std::string get_lib_name() { return "${PROJECT_NAME}"; }
+EOF
+        cat > "${PROJECT_DIR}/tests/basic_test.cpp" <<EOF
+#include <gtest/gtest.h>
+#include "${PROJECT_NAME}/${PROJECT_NAME}.h"
+TEST(LibraryTest, GetName) { EXPECT_EQ(get_lib_name(), "${PROJECT_NAME}"); }
+EOF
+    else
+        echo "📝 創建主程式 (src/main.cpp)..."
+        cat > "${PROJECT_DIR}/src/main.cpp" <<EOF
+#include <iostream>
+int main() { std::cout << "Hello, ${PROJECT_NAME}! 🌟" << std::endl; return 0; }
+EOF
+        cat > "${PROJECT_DIR}/tests/basic_test.cpp" <<EOF
+#include <gtest/gtest.h>
+TEST(BasicTest, AssertTrue) { EXPECT_TRUE(true); }
+EOF
+    fi
+
+    # 3. 產生所有 CMake 與 vcpkg 設定檔
+    echo "📝 正在產生 vcpkg.json..."
+    local LOWERCASE_PROJECT_NAME=$(echo "$PROJECT_NAME" | tr '[:upper:]' '[:lower:]')
+    cat > "${PROJECT_DIR}/vcpkg.json" <<EOF
+{
+  "name": "${LOWERCASE_PROJECT_NAME}",
+  "version-string": "1.0.0",
+  "dependencies": [
+    "gtest"
+  ]
+}
+EOF
+
+    echo "📝 正在產生 cmake/dependencies.cmake..."
+    cat > "${PROJECT_DIR}/cmake/dependencies.cmake" <<EOF
+# --- Cmake Dependency Management ---
+find_package(GTest CONFIG REQUIRED)
+find_package(Threads REQUIRED)
+set(THIRD_PARTY_LIBS
+  Threads::Threads
+)
+EOF
+
+    echo "📝 正在產生 CMakePresets.json..."
+    cat > "${PROJECT_DIR}/CMakePresets.json" <<EOF
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "default", "displayName": "Default Config", "description": "Default build with tests disabled.",
+      "binaryDir": "\${sourceDir}/build/default",
+      "cacheVariables": { "CMAKE_TOOLCHAIN_FILE": "\$env{CPROJECT_VCPKG_TOOLCHAIN}", "BUILD_TESTS": "OFF" }
+    },
+    {
+      "name": "test", "displayName": "Test Config", "description": "Build with tests enabled.", "inherits": "default",
+      "binaryDir": "\${sourceDir}/build/test",
+      "cacheVariables": { "BUILD_TESTS": "ON" }
+    }
+  ],
+  "buildPresets": [
+    { "name": "default", "configurePreset": "default" }, { "name": "test", "configurePreset": "test" }
+  ],
+  "testPresets": [
+    { "name": "default", "configurePreset": "test", "output": { "outputOnFailure": true } }
+  ]
+}
+EOF
+
+    echo "📝 正在產生主 CMakeLists.txt..."
+    if [ "${PROJECT_TYPE}" == "library" ]; then
+        cat > "${PROJECT_DIR}/CMakeLists.txt" <<EOF
+cmake_minimum_required(VERSION 3.18)
+# 【已修正】移除 PROJECT_NAME 前的 '\'，讓 shell 替換變數
+project(${PROJECT_NAME}
+        VERSION 1.0.0
+        LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+include(cmake/dependencies.cmake)
+option(BUILD_TESTS "Build unit tests" ON)
+
+if(BUILD_TESTS)
+  enable_testing()
+  include(GoogleTest)
+endif()
+
+# 【已修正】移除 PROJECT_NAME 和其他變數前的 '\'
+add_library(${PROJECT_NAME} STATIC src/${PROJECT_NAME}.cpp)
+target_include_directories(${PROJECT_NAME} PUBLIC \${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(${PROJECT_NAME} PRIVATE \${THIRD_PARTY_LIBS})
+
+if(BUILD_TESTS)
+  add_executable(run_tests tests/basic_test.cpp)
+  target_link_libraries(run_tests PRIVATE ${PROJECT_NAME} GTest::GTest GTest::Main)
+  gtest_discover_tests(run_tests)
+endif()
+EOF
+    else # executable
+        cat > "${PROJECT_DIR}/CMakeLists.txt" <<EOF
+cmake_minimum_required(VERSION 3.18)
+# 【已修正】移除 PROJECT_NAME 前的 '\'，讓 shell 替換變數
+project(${PROJECT_NAME}
+        VERSION 1.0.0
+        LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+include(cmake/dependencies.cmake)
+option(BUILD_TESTS "Build unit tests" ON)
+
+if(BUILD_TESTS)
+  enable_testing()
+  include(GoogleTest)
+endif()
+
+# 【已修正】移除 PROJECT_NAME 和其他變數前的 '\'
+add_executable(${PROJECT_NAME} src/main.cpp)
+target_link_libraries(${PROJECT_NAME} PRIVATE \${THIRD_PARTY_LIBS})
+
+if(BUILD_TESTS)
+  add_executable(run_tests tests/basic_test.cpp)
+  target_link_libraries(run_tests PRIVATE GTest::GTest GTest::Main)
+  gtest_discover_tests(run_tests)
+endif()
+EOF
+    fi
+
+    echo "🎉 專案 ${PROJECT_NAME} 已成功生成！"
+    echo ""
+    echo "下一步:"
+    echo " cd ${PROJECT_NAME}"
+    echo " cproject build"
+}
+
+
 do_build() {
     local enable_tests="$1"
     local preset_name="default"
@@ -157,28 +345,44 @@ do_add() {
         echo "   用法: cproject add <lib-name>" >&2
         exit 1
     fi
-    if [[ ! -f "vcpkg.json" || ! -d "cmake" ]]; then
-        echo "❌ 錯誤：找不到 vcpkg.json 或 cmake 目錄。" >&2
+    local vcpkg_file="vcpkg.json"
+    local cmake_deps_file="cmake/dependencies.cmake"
+    if [[ ! -f "${vcpkg_file}" || ! -f "${cmake_deps_file}" ]]; then
+        echo "❌ 錯誤：找不到 vcpkg.json 或 cmake/dependencies.cmake。" >&2
         echo "   請確認您位於 cproject 專案的根目錄下。" >&2
         exit 1
     fi
 
-    # 1. 更新 vcpkg.json
-    echo "📝 正在將 '${lib_name}' 加入到 vcpkg.json..."
-    jq --arg lib "$lib_name" '.dependencies |= . + [$lib] | .dependencies |= unique' vcpkg.json > vcpkg.json.tmp && mv vcpkg.json.tmp vcpkg.json
+    # --- 步驟 1: 更新 vcpkg.json (加入冪等性檢查) ---
+    if jq -e ".dependencies[] | select(. == \"$lib_name\")" "${vcpkg_file}" > /dev/null; then
+        echo "ℹ️  依賴 '${lib_name}' 已經存在於 ${vcpkg_file} 中，跳過。"
+    else
+        echo "📝 正在將 '${lib_name}' 加入到 ${vcpkg_file}..."
+        jq --arg lib "$lib_name" '.dependencies |= . + [$lib] | .dependencies |= unique' "${vcpkg_file}" > "${vcpkg_file}.tmp" && mv "${vcpkg_file}.tmp" "${vcpkg_file}"
+    fi
 
-    # 2. 提示使用者更新 cmake/dependencies.cmake
-    echo "✅ 成功將依賴加入 vcpkg.json！"
+    # --- 步驟 2: 自動更新 cmake/dependencies.cmake (加入冪等性檢查) ---
+    # 建立一個通用的 PackageName (例如 fmt -> Fmt, spdlog -> Spdlog)
+    local capitalized_lib_name="$(tr '[:lower:]' '[:upper:]' <<< ${lib_name:0:1})${lib_name:1}"
+
+    if grep -q "find_package(${capitalized_lib_name} " "${cmake_deps_file}"; then
+        echo "ℹ️  '${capitalized_lib_name}' 看起來已經設定在 ${cmake_deps_file} 中，跳過。"
+    else
+        echo "📝 正在自動更新 ${cmake_deps_file}..."
+        # 在檔案末尾追加設定
+        echo "" >> "${cmake_deps_file}"
+        echo "# Added by 'cproject add' for ${lib_name}" >> "${cmake_deps_file}"
+        echo "find_package(${capitalized_lib_name} CONFIG REQUIRED)" >> "${cmake_deps_file}"
+        # 這是基於 vcpkg 常見慣例的猜測，對於大多數函式庫有效
+        echo "list(APPEND THIRD_PARTY_LIBS ${capitalized_lib_name}::${lib_name})" >> "${cmake_deps_file}"
+    fi
+
+    # --- 步驟 3: 顯示最終結果 ---
     echo ""
-    echo "--- 👉下一步：手動設定 CMake ---"
-    echo "請編輯 'cmake/dependencies.cmake' 檔案，加入以下兩行："
-    echo ""
-    echo "   # 範例 (請根據函式庫文檔調整)"
-    echo "   find_package(${lib_name^} CONFIG REQUIRED) # 將 ${lib_name} 首字母大寫"
-    echo "   list(APPEND THIRD_PARTY_LIBS ${lib_name^}::${lib_name}) # 使用 vcpkg 提供的 target"
-    echo ""
-    echo "💡 提示：vcpkg 提供的 CMake target 名稱通常是 'PackageName::target' 格式。"
-    echo "   完成後，執行 'cproject build' 來安裝並連結新的函式庫。"
+    echo "✅ 成功將依賴 '${lib_name}' 加入專案！"
+    echo "   現在您可以執行 'cproject build' 來下載並連結該函式庫。"
+    echo "💡 提示：自動產生的 CMake target 名稱為 '${capitalized_lib_name}::${lib_name}'。"
+    echo "   如果此名稱不正確，請手動修改 '${cmake_deps_file}'。"
 }
 
 
@@ -228,8 +432,7 @@ SUBCMD="$1"; shift
 
 case "$SUBCMD" in
     create)
-        # create 命令邏輯不變，它呼叫外部腳本
-        exec bash "${TOOL_SCRIPT_DIR}/create_project.sh" "$@"
+        do_create "$@"
         ;;
     add)
         do_add "$@"
