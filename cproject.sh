@@ -7,6 +7,16 @@ set -e
 # 解析符號連結，找到腳本的真實目錄
 TOOL_SCRIPT_DIR=$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")
 
+# --- 自動讀取專案本地的 .env 檔案 ---
+if [ -f ".env" ]; then
+    echo "ℹ 正在從 .env 檔案載入專案環境變數..."
+    cat .env
+    # set -a 讓後續 source 的所有變數都自動被 export
+    set -a
+    source .env
+    set +a # 恢復預設行為
+fi
+
 # ==============================================================================
 # === 核心功能函數 ===
 # ==============================================================================
@@ -493,8 +503,8 @@ usage() {
       ➤ 建置當前專案。
     run
       ➤ 建置並執行當前專案的主程式。
-    test [--cicd]
-      ➤ 執行測試 (使用 --cicd 以 CI 模式執行)。
+    test [--detail]
+      ➤ 執行測試 (使用 --detail 以 Ctest 模式執行)。
 
   套件管理
     add <lib-name>
@@ -503,7 +513,7 @@ usage() {
       ➤ 移除一個套件。
     search <lib-name>
       ➤ 搜尋套件。
-    pkg <add|rm|search>
+    pkg <add|remove|search>
       ➤ (完整指令) 執行套件管理子命令。
 
 範例:
@@ -555,7 +565,7 @@ case "$SUBCMD" in
             add)
                 do_pkg_add "$@"
                 ;;
-            rm)
+            remove)
                 do_pkg_rm "$@"
                 ;;
             search)
