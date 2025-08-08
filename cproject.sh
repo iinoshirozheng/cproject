@@ -79,7 +79,7 @@ EOF
 #include <gmock/gmock.h>
 #include "${PROJECT_NAME}/${PROJECT_NAME}.h"
 TEST(LibraryTest, GetName) { EXPECT_EQ(get_lib_name(), "${PROJECT_NAME}"); }
-TEST(MockTest, BasicMock) { EXPECT_TRUE(true); } // Placeholder for GMock
+TEST(MockTest, BasicMock) { EXPECT_TRUE(true); }
 EOF
     else # executable
         echo "📝 創建主程式 (src/main.cpp)..."
@@ -91,11 +91,11 @@ EOF
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 TEST(BasicTest, AssertTrue) { EXPECT_TRUE(true); }
-TEST(MockTest, BasicMock) { EXPECT_TRUE(true); } // Placeholder for GMock
+TEST(MockTest, BasicMock) { EXPECT_TRUE(true); }
 EOF
     fi
 
-    # 3. 產生所有 CMake 與設定檔
+    # 3. 產生所有 CMake 設定檔
     echo "📝 正在產生 cmake/dependencies.cmake..."
     cat > "${PROJECT_DIR}/cmake/dependencies.cmake" <<EOF
 # --- Cmake Dependency Management ---
@@ -110,87 +110,27 @@ EOF
     echo "📝 正在產生 cmake/gtest.cmake..."
     cat > "${PROJECT_DIR}/cmake/gtest.cmake" <<EOF
 # --- Google Test & Mock Framework Setup ---
-# This file is managed by cproject.
-
-# 1. Find GTest and GMock packages
-# vcpkg ensures that GTest and GMock are found together.
 find_package(GTest CONFIG REQUIRED)
-
-# 2. Enable testing for the project
 enable_testing()
-
-# 3. Include the GoogleTest module to get gtest_discover_tests()
 include(GoogleTest)
-
-# 4. Define a variable for all test-related libraries
-set(TEST_LIBS
-  GTest::gtest
-  GTest::gtest_main
-  GTest::gmock
-  GTest::gmock_main
-)
-EOF
-
-    echo "📝 正在產生 CMakePresets.json..."
-    cat > "${PROJECT_DIR}/CMakePresets.json" <<EOF
-{
-  "version": 3,
-  "configurePresets": [
-    {
-      "name": "default", "displayName": "Default Config", "description": "Default build with tests disabled.",
-      "binaryDir": "\${sourceDir}/build/default",
-      "cacheVariables": {
-        "CMAKE_TOOLCHAIN_FILE": "\$env{CPROJECT_VCPKG_TOOLCHAIN}",
-        "BUILD_TESTS": "OFF"
-      }
-    },
-    {
-      "name": "test", "displayName": "Test Config", "description": "Build with tests enabled.", "inherits": "default",
-      "binaryDir": "\${sourceDir}/build/test",
-      "cacheVariables": { "BUILD_TESTS": "ON" }
-    },
-    {
-      "name": "debug", "displayName": "Debug Config", "description": "Debug build.", "inherits": "default",
-      "binaryDir": "\${sourceDir}/build/debug",
-      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
-    },
-    {
-      "name": "release", "displayName": "Release Config", "description": "Release build.", "inherits": "default",
-      "binaryDir": "\${sourceDir}/build/release",
-      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
-    }
-  ],
-    "buildPresets": [
-      { "name": "default", "configurePreset": "default" },
-      { "name": "test", "configurePreset": "test" },
-      { "name": "debug", "configurePreset": "debug" },
-      { "name": "release", "configurePreset": "release" }
-    ],
-  "testPresets": [
-    { "name": "default", "configurePreset": "test", "output": { "outputOnFailure": true } }
-  ]
-}
+set(TEST_LIBS GTest::gtest GTest::gtest_main GTest::gmock GTest::gmock_main)
 EOF
 
     echo "📝 正在產生主 CMakeLists.txt..."
     if [ "${PROJECT_TYPE}" == "library" ]; then
         cat > "${PROJECT_DIR}/CMakeLists.txt" <<EOF
 cmake_minimum_required(VERSION 3.18)
-project(${PROJECT_NAME}
-        VERSION 1.0.0
-        LANGUAGES CXX)
+project(${PROJECT_NAME} VERSION 1.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include(cmake/dependencies.cmake)
 option(BUILD_TESTS "Build unit tests" ON)
 
-# 主函式庫設定
 add_library(${PROJECT_NAME} STATIC src/${PROJECT_NAME}.cpp)
 target_include_directories(${PROJECT_NAME} PUBLIC \${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(${PROJECT_NAME} PRIVATE \${THIRD_PARTY_LIBS})
 
-# 測試相關設定
 if(BUILD_TESTS)
   include(cmake/gtest.cmake)
   add_executable(run_tests tests/basic_test.cpp)
@@ -201,20 +141,16 @@ EOF
     else # executable
         cat > "${PROJECT_DIR}/CMakeLists.txt" <<EOF
 cmake_minimum_required(VERSION 3.18)
-project(${PROJECT_NAME}
-        VERSION 1.0.0
-        LANGUAGES CXX)
+project(${PROJECT_NAME} VERSION 1.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include(cmake/dependencies.cmake)
 option(BUILD_TESTS "Build unit tests" ON)
 
-# 主程式設定
 add_executable(${PROJECT_NAME} src/main.cpp)
 target_link_libraries(${PROJECT_NAME} PRIVATE \${THIRD_PARTY_LIBS})
 
-# 測試相關設定
 if(BUILD_TESTS)
   include(cmake/gtest.cmake)
   add_executable(run_tests tests/basic_test.cpp)
@@ -232,36 +168,45 @@ EOF
     echo " cproject build"
 }
 
-
 do_build() {
-    local enable_tests="$1"
-    local preset_name="default"
-    if [[ "${enable_tests}" == "true" ]]; then
-        preset_name="test"
+    local build_config="$1"
+    if [[ -z "$build_config" ]]; then
+        build_config="release"
     fi
 
     local project_dir; project_dir="$(pwd)"
-    local build_dir="${project_dir}/build/${preset_name}"
+    local build_dir="${project_dir}/build/${build_config}"
     local cmake_file="${project_dir}/CMakeLists.txt"
     local vcpkg_toolchain_file="${TOOL_SCRIPT_DIR}/vcpkg/scripts/buildsystems/vcpkg.cmake"
 
-    if [[ ! -f "${cmake_file}" || ! -f "${project_dir}/CMakePresets.json" ]]; then
-        echo "❌ 錯誤：找不到 CMakeLists.txt 或 CMakePresets.json。" >&2
+    if [[ ! -f "${cmake_file}" ]]; then
+        echo "❌ 錯誤：找不到 CMakeLists.txt。" >&2
         exit 1
     fi
 
-    export CPROJECT_VCPKG_TOOLCHAIN="${vcpkg_toolchain_file}"
+    local cmake_args=()
+    cmake_args+=("-DCMAKE_TOOLCHAIN_FILE=${vcpkg_toolchain_file}")
 
-    if [ -d "${build_dir}" ]; then
-        echo "🧹 正在移除舊的 build 目錄: ${build_dir}"
-        rm -rf "${build_dir}"
+    if [[ "$build_config" == "test" ]]; then
+        cmake_args+=("-DCMAKE_BUILD_TYPE=Debug")
+        cmake_args+=("-DBUILD_TESTS=ON")
+    elif [[ "$build_config" == "debug" ]]; then
+        cmake_args+=("-DCMAKE_BUILD_TYPE=Debug")
+        cmake_args+=("-DBUILD_TESTS=OFF")
+    else # release
+        cmake_args+=("-DCMAKE_BUILD_TYPE=Release")
+        cmake_args+=("-DBUILD_TESTS=OFF")
     fi
 
-    echo "⚙️  執行 CMake 配置 (Preset: ${preset_name})..."
-    cmake --preset "${preset_name}"
+    if [ ! -d "${build_dir}" ]; then
+        mkdir -p "${build_dir}"
+    fi
 
-    echo "🔨 編譯中 (Preset: ${preset_name})..."
-    cmake --build --preset "${preset_name}"
+    echo "⚙️  執行 CMake 配置 (組態: ${build_config})..."
+    cmake -S . -B "${build_dir}" "${cmake_args[@]}"
+
+    echo "🔨 編譯中 (組態: ${build_config})..."
+    cmake --build "${build_dir}"
 
     echo "✅ 建置完成！"
 
@@ -270,12 +215,9 @@ do_build() {
     copy_artifacts "${project_name}" "${project_dir}" "${build_dir}" "${project_dir}/lib"
 }
 
-#【已修改】移除 --detail 邏輯
 do_test() {
-    # 步驟 1: 建置測試
-    do_build "true"
+    do_build "test"
 
-    # 步驟 2: 直接執行測試檔
     local test_executable_path="./build/test/run_tests"
     if [ -f "${test_executable_path}" ]; then
         echo "🏃‍♂️ 直接執行 Google Test (${test_executable_path})..."
@@ -289,33 +231,29 @@ do_test() {
     fi
 }
 
+#【已修改】合併 do_run 與 do_run_debug
 do_run() {
+    local build_config="$1"
+    if [[ -z "$build_config" ]]; then
+        build_config="release"
+    fi
+
+    do_build "$build_config"
+
     local project_dir
     project_dir="$(pwd)"
-    local build_dir="${project_dir}/build/default"
-
-    local cmake_file="${project_dir}/CMakeLists.txt"
-    if [[ ! -f "${cmake_file}" ]]; then
-        echo "❌ 錯誤：找不到 CMakeLists.txt。" >&2
-        exit 1
-    fi
     local project_name
-    project_name="$(grep -E '^[[:space:]]*project\(' "${cmake_file}" | head -n1 | sed -E 's/^[[:space:]]*project\(\s*([A-Za-z0-9_]+).*/\1/')"
-
-    do_build "false"
-
-    local executable_path="${build_dir}/${project_name}"
+    project_name="$(grep -E '^[[:space:]]*project\(' "${project_dir}/CMakeLists.txt" | head -n1 | sed -E 's/^[[:space:]]*project\(\s*([A-Za-z0-9_]+).*/\1/')"
+    
+    local executable_path="${project_dir}/build/${build_config}/${project_name}"
 
     if [[ ! -x "${executable_path}" ]]; then
         echo "❌ 錯誤：找不到可執行的檔案或專案是函式庫。" >&2
         echo "   預期路徑: ${executable_path}" >&2
-        if [[ -d "${project_dir}/lib" ]]; then
-            echo "ℹ️  偵測到 lib 目錄，專案 '${project_name}' 可能是一個函式庫，沒有主程式可執行。"
-        fi
         exit 1
     fi
 
-    echo "🚀 執行主程式..."
+    echo "🚀 執行主程式 (${build_config} 組態)..."
     echo "------------------------------------------"
     "${executable_path}"
     echo "------------------------------------------"
@@ -330,9 +268,7 @@ copy_artifacts() {
 
     local lib_candidates=()
     while IFS= read -r -d '' f; do
-        case "$f" in
-            */CMakeFiles/*|*/tests/*|*/test/*|*/examples/*|*/example/*|*/bench*/*) continue ;;
-        esac
+        case "$f" in */CMakeFiles/*|*/tests/*|*/test/*) continue ;; esac
         lib_candidates+=("$f")
     done < <(find "${build_dir}" -type f \( -name "lib${project_name}.a" -o -name "lib${project_name}.so" -o -name "lib${project_name}.dylib" -o -name "${project_name}.lib" \) -print0)
 
@@ -340,18 +276,15 @@ copy_artifacts() {
         echo "📦 正在處理函式庫產出..."
         rm -rf "${lib_dir}"
         mkdir -p "${lib_dir}"
-        for f in "${lib_candidates[@]}"; do
-            rsync -a "$f" "${lib_dir}/"
-        done
+        for f in "${lib_candidates[@]}"; do rsync -a "$f" "${lib_dir}/"; done
         if [[ -d "${project_dir}/include" ]]; then
             rsync -a --delete "${project_dir}/include/" "${lib_dir}/include/"
         fi
         echo "✅ 函式庫複製完成。"
     else
-        echo "ℹ️ 在 ${build_dir} 中找不到函式庫產出，跳過複製步驟。"
+        : # Do nothing
     fi
 }
-
 
 do_pkg_search() {
     local lib_name="$1"
@@ -454,41 +387,41 @@ do_pkg_rm() {
 #【已修改】更新 usage 說明
 usage() {
     cat <<EOF
-📘 cproject - 現代化的 C++ 專案管理器 (Classic 模式)
+📘 cproject - 現代化的 C++ 專案管理器
 
 用法:
   cproject <command> [options]
 
 命令:
-  常用指令
+  專案生命週期
     create [--library] <ProjectName>
       ➤ 建立一個新的 C++ 專案。
-    build
-      ➤ 建置當前專案。
-    run
-      ➤ 建置並執行當前專案的主程式。
+    build [-r|--release] [-d|--debug]
+      ➤ 建置專案 (預設: release)。
+    run [-r|--release] [-d|--debug]
+      ➤ 建置並執行專案 (預設: release)。
     test
-      ➤ 建置並執行專案的單元測試。
+      ➤ 建置並執行單元測試 (debug 組態)。
 
   套件管理
     add <lib-name>
-      ➤ (推薦) 新增並安裝一個套件。
+      ➤ 新增並安裝一個套件。
     remove <lib-name>
       ➤ 移除一個套件。
     search <lib-name>
       ➤ 搜尋套件。
-    pkg <add|remove|search>
-      ➤ (完整指令) 執行套件管理子命令。
 
 範例:
   cproject create MyApp
   cd MyApp
   cproject add gtest
   cproject test
+  cproject run --debug
 EOF
     exit 1
 }
 
+#【已修改】重構指令分派器以支援參數
 # --- 主邏輯 ---
 if [[ $# -lt 1 ]]; then
     echo "⚠️  請提供一個命令。" >&2
@@ -498,21 +431,50 @@ fi
 SUBCMD="$1"; shift
 
 case "$SUBCMD" in
-    create) do_create "$@";;
-    build) do_build "false";;
-    run) do_run;;
-    test) do_test;;
-    add) do_pkg_add "$@";;
-    remove) do_pkg_rm "$@";;
-    search) do_pkg_search "$@";;
-    pkg)
-        PKG_SUBCMD="$1"; shift
-        case "$PKG_SUBCMD" in
-            add) do_pkg_add "$@";;
-            remove) do_pkg_rm "$@";;
-            search) do_pkg_search "$@";;
-            *) echo "❌ 未知的 pkg 子命令: '$PKG_SUBCMD'" >&2; usage;;
-        esac
+    create)
+        do_create "$@"
         ;;
-    *) echo "❌ 未知命令: $SUBCBCMD" >&2; usage;;
+    
+    build)
+        build_config="release" # Default
+        while [[ "$#" -gt 0 ]]; do
+            case $1 in
+                -d|--debug) build_config="debug"; shift ;;
+                -r|--release) build_config="release"; shift ;;
+                *) echo "❌ build 的未知參數: $1" >&2; usage; exit 1 ;;
+            esac
+        done
+        do_build "$build_config"
+        ;;
+
+    run)
+        build_config="release" # Default
+        while [[ "$#" -gt 0 ]]; do
+            case $1 in
+                -d|--debug) build_config="debug"; shift ;;
+                -r|--release) build_config="release"; shift ;;
+                *) echo "❌ run 的未知參數: $1" >&2; usage; exit 1 ;;
+            esac
+        done
+        do_run "$build_config"
+        ;;
+
+    test)
+        do_test
+        ;;
+    
+    add)
+        do_pkg_add "$@"
+        ;;
+    remove)
+        do_pkg_rm "$@"
+        ;;
+    search)
+        do_pkg_search "$@"
+        ;;
+    
+    *)
+        echo "❌ 未知命令: $SUBCMD" >&2
+        usage
+        ;;
 esac
