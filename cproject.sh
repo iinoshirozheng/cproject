@@ -341,29 +341,34 @@ copy_artifacts() {
     rm -rf "${bin_dir}" "${lib_dir}"
 
     # 尋找執行檔
-    local executable_path
-    executable_path=$(find "${build_dir}" -maxdepth 2 -type f -name "${project_name}")
+    local executable_paths
+    mapfile -t executable_paths < <(find "${build_dir}" -type f -name "${project_name}" -print)
 
     # 尋找函式庫
-    local lib_path
-    lib_path=$(find "${build_dir}" -maxdepth 2 -type f \( -name "lib${project_name}.a" -o -name "lib${project_name}.so" -o -name "lib${project_name}.dylib" \))
+    local lib_paths
+    mapfile -t lib_paths < <(find "${build_dir}" -type f \( -name "lib${project_name}.a" -o -name "lib${project_name}.so" -o -name "lib${project_name}.dylib" \) -print)
 
-
-    if [[ -n "${executable_path}" ]]; then
+    if (( ${#executable_paths[@]} == 1 && ${#lib_paths[@]} == 0 )); then
         echo " -> 找到執行檔，正在複製到 ${bin_dir}..."
         mkdir -p "${bin_dir}"
-        cp "${executable_path}" "${bin_dir}/"
-    elif [[ -n "${lib_path}" ]]; then
+        cp "${executable_paths[0]}" "${bin_dir}/"
+    elif (( ${#lib_paths[@]} == 1 && ${#executable_paths[@]} == 0 )); then
         echo " -> 找到函式庫，正在複製到 ${lib_dir}..."
         mkdir -p "${lib_dir}"
-        find "${build_dir}" -maxdepth 2 -type f \( -name "lib${project_name}.a" -o -name "lib${project_name}.so" -o -name "lib${project_name}.dylib" \) -exec cp {} "${lib_dir}/" \;
+        cp "${lib_paths[0]}" "${lib_dir}/"
         if [ -d "${project_dir}/include" ]; then
             echo " -> 正在複製公開標頭檔..."
             mkdir -p "${lib_dir}/include"
             rsync -a --delete "${project_dir}/include/" "${lib_dir}/include/"
         fi
     else
-        echo "⚠️  警告：在 ${build_dir} 中找不到任何預期的執行檔或函式庫。"
+        if (( ${#executable_paths[@]} > 1 )); then
+            echo "⚠️  警告：找到多個執行檔: ${executable_paths[*]}"
+        fi
+        if (( ${#lib_paths[@]} > 1 )); then
+            echo "⚠️  警告：找到多個函式庫: ${lib_paths[*]}"
+        fi
+        echo "⚠️  警告：在 ${build_dir} 中找不到唯一且預期的執行檔或函式庫。"
         return 1
     fi
 
