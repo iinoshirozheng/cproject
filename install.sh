@@ -3,10 +3,10 @@
 set -e
 
 # --- 路徑設定 ---
-CPPROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SETUP_VCPKG_SCRIPT="${CPPROJECT_DIR}/setup_vcpkg.sh"
-CPROJECT_EXECUTABLE="${CPPROJECT_DIR}/cproject.sh"
-BIN_DIR="${CPPROJECT_DIR}/bin"
+CPROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SETUP_VCPKG_SCRIPT="${CPROJECT_DIR}/setup_vcpkg.sh"
+CPROJECT_EXECUTABLE="${CPROJECT_DIR}/cproject.sh"
+BIN_DIR="${CPROJECT_DIR}/bin"
 PUBLIC_CPROJECT_CMD="${BIN_DIR}/cproject"
 
 echo "--- cproject 安裝程序 ---"
@@ -50,8 +50,8 @@ fi
 
 # 【已修正】定義正確的環境變數設定
 # 使用單引號和雙引號組合，確保變數只在需要時展開，且路徑正確
-CPROJECT_PATH_LINE="export PATH=\"${CPPROJECT_DIR}/bin:\$PATH\""
-VCPKG_ROOT_LINE="export VCPKG_ROOT=\"${CPPROJECT_DIR}/vcpkg\""
+CPROJECT_PATH_LINE="export PATH=\"${CPROJECT_DIR}/bin:\$PATH\""
+VCPKG_ROOT_LINE="export VCPKG_ROOT=\"${CPROJECT_DIR}/vcpkg\""
 VCPKG_PATH_LINE="export PATH=\"\$VCPKG_ROOT:\$PATH\""
 
 if [[ -f "$SHELL_PROFILE" ]]; then
