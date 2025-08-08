@@ -76,4 +76,4 @@ while [[ "$#" -gt 0 ]]; do
 done
 
 # --- 執行主函式 ---
-main
+main "$@"
