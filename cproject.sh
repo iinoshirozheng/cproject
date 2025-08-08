@@ -393,45 +393,35 @@ do_pkg_add() {
     local cmake_deps_file="cmake/dependencies.cmake"
     if [[ ! -f "${vcpkg_file}" || ! -f "${cmake_deps_file}" ]]; then echo "❌ 錯誤：找不到設定檔，請確認位於專案根目錄下。" >&2; exit 1; fi
 
-    # --- vcpkg search 驗證 ---
-    echo "🔎 正在透過 vcpkg search 驗證函式庫 '${lib_name}'..."
-    local search_result; search_result=$(vcpkg search "$lib_name")
-    local exact_match; exact_match=$(echo "${search_result}" | grep -E "^${lib_name}[[:space:]]" | head -n 1)
-    if [[ -z "$exact_match" ]]; then
-        echo "❌ 錯誤：在 vcpkg 中找不到名為 '${lib_name}' 的函式庫。" >&2
-        echo "   最接近的搜尋結果如下：" >&2; echo "${search_result}" >&2; exit 1;
-    fi
-    echo "✅ 找到相符的函式庫: ${exact_match}"
-
     # --- 更新 vcpkg.json ---
     if ! jq -e ".dependencies[] | select(. == \"$lib_name\")" "${vcpkg_file}" > /dev/null; then
         echo "📝 正在將 '${lib_name}' 加入到 ${vcpkg_file}..."
         jq --arg lib "$lib_name" '.dependencies |= . + [$lib] | .dependencies |= unique' "${vcpkg_file}" > "${vcpkg_file}.tmp" && mv "${vcpkg_file}.tmp" "${vcpkg_file}"
     fi
 
-    # --- 執行 vcpkg install 並捕獲輸出 ---
+    # --- 安裝依賴 ---
     echo "📦 正在安裝依賴... (vcpkg install)"
-    local install_output; install_output=$(vcpkg install | tee /dev/tty)
+    vcpkg install | tee /dev/tty
 
-    # --- 解析 vcpkg 輸出以取得 CMake 用法 ---
+    # --- 透過 JSON 取得 CMake 用法 ---
     echo "⚙️  正在解析 CMake 用法..."
-    local usage_block; usage_block=$(echo "${install_output}" | awk -v lib="${lib_name}" '/The package/ && $3==lib {p=1} p && /^$/ {p=0} p')
-    local package_name; package_name=$(echo "${usage_block}" | grep "find_package" | sed -E 's/.*find_package\(([^ ]+).*/\1/')
-    local link_targets; link_targets=$(echo "${usage_block}" | grep "target_link_libraries" | sed -E 's/.*(PRIVATE|PUBLIC|INTERFACE) //; s/\).*//')
+    local pkg_info_json; pkg_info_json=$(vcpkg x-package-info "$lib_name" --x-json)
+    local find_package_line; find_package_line=$(echo "$pkg_info_json" | jq -r '.usage.cmake.find_package // empty')
+    local link_targets; link_targets=$(echo "$pkg_info_json" | jq -r '.usage.cmake.targets[]?' | xargs)
 
     # --- 使用解析到的資訊更新 cmake/dependencies.cmake ---
-    if [[ -n "$package_name" && -n "$link_targets" ]]; then
-        if grep -q "find_package(${package_name} " "${cmake_deps_file}"; then
-            echo "ℹ️  '${package_name}' 看起來已經設定在 ${cmake_deps_file} 中，跳過。"
+    if [[ -n "$find_package_line" && -n "$link_targets" ]]; then
+        if grep -q "${find_package_line}" "${cmake_deps_file}"; then
+            echo "ℹ️  '${lib_name}' 看起來已經設定在 ${cmake_deps_file} 中，跳過。"
         else
             echo "📝 正在使用精確的 target 自動更新 ${cmake_deps_file}..."
             echo "" >> "${cmake_deps_file}"
             echo "# Added by 'cproject pkg add' for ${lib_name}" >> "${cmake_deps_file}"
-            echo "find_package(${package_name} CONFIG REQUIRED)" >> "${cmake_deps_file}"
+            echo "${find_package_line}" >> "${cmake_deps_file}"
             echo "list(APPEND THIRD_PARTY_LIBS ${link_targets})" >> "${cmake_deps_file}"
         fi
     else
-        echo "⚠️ 警告：無法自動解析 '${lib_name}' 的 CMake 用法，您可能需要手動修改 ${cmake_deps_file}。"
+        echo "⚠️ 無法自動解析 '${lib_name}' 的 CMake 用法。"
     fi
 
     echo ""
