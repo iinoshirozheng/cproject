@@ -19,7 +19,6 @@ fi
 # === 核心功能函數 ===
 # ==============================================================================
 
-#【已重構 GTest/GMock 邏輯】專案建立函式
 do_create() {
     local PROJECT_NAME=""
     local PROJECT_TYPE="executable"
@@ -133,7 +132,6 @@ set(TEST_LIBS
 EOF
 
     echo "📝 正在產生 CMakePresets.json..."
-    # (CMakePresets.json 內容不變)
     cat > "${PROJECT_DIR}/CMakePresets.json" <<EOF
 {
   "version": 3,
@@ -272,30 +270,22 @@ do_build() {
     copy_artifacts "${project_name}" "${project_dir}" "${build_dir}" "${project_dir}/lib"
 }
 
+#【已修改】移除 --detail 邏輯
 do_test() {
-    local is_ci_mode=false
-    if [[ "$1" == "--detail" ]]; then
-        is_ci_mode=true
-    fi
-
+    # 步驟 1: 建置測試
     do_build "true"
 
-    if [[ "$is_ci_mode" == "true" ]]; then
-        echo "🤖 執行 CI/CD 測試 (Preset: test)..."
-        ctest --preset test --output-on-failure --output-junit "ctest_results.xml"
-        echo "✅ CI/CD 測試完成，報告已儲存至 ctest_results.xml"
+    # 步驟 2: 直接執行測試檔
+    local test_executable_path="./build/test/run_tests"
+    if [ -f "${test_executable_path}" ]; then
+        echo "🏃‍♂️ 直接執行 Google Test (${test_executable_path})..."
+        echo "------------------------------------------"
+        "${test_executable_path}"
+        echo "------------------------------------------"
+        echo "✅ 測試完成。"
     else
-        local test_executable_path="./build/test/run_tests"
-        if [ -f "${test_executable_path}" ]; then
-            echo "🏃‍♂️ 直接執行 Google Test (${test_executable_path})..."
-            echo "------------------------------------------"
-            "${test_executable_path}"
-            echo "------------------------------------------"
-            echo "✅ 測試完成。"
-        else
-            echo "❌ 錯誤：找不到測試執行檔於 ${test_executable_path}" >&2
-            exit 1
-        fi
+        echo "❌ 錯誤：找不到測試執行檔於 ${test_executable_path}" >&2
+        exit 1
     fi
 }
 
@@ -374,7 +364,6 @@ do_pkg_search() {
     vcpkg search "$lib_name"
 }
 
-#【已修改】`add gtest` 現在也會安裝 gmock
 do_pkg_add() {
     local lib_name="$1"
 
@@ -462,6 +451,7 @@ do_pkg_rm() {
 # ==============================================================================
 # === 命令分派器 ===
 # ==============================================================================
+#【已修改】更新 usage 說明
 usage() {
     cat <<EOF
 📘 cproject - 現代化的 C++ 專案管理器 (Classic 模式)
@@ -477,8 +467,8 @@ usage() {
       ➤ 建置當前專案。
     run
       ➤ 建置並執行當前專案的主程式。
-    test [--detail]
-      ➤ 執行測試 (使用 --detail 以 Ctest 模式執行)。
+    test
+      ➤ 建置並執行專案的單元測試。
 
   套件管理
     add <lib-name>
@@ -494,8 +484,7 @@ usage() {
   cproject create MyApp
   cd MyApp
   cproject add gtest
-  cproject build
-  cproject run
+  cproject test
 EOF
     exit 1
 }
@@ -512,7 +501,7 @@ case "$SUBCMD" in
     create) do_create "$@";;
     build) do_build "false";;
     run) do_run;;
-    test) do_test "$@";;
+    test) do_test;;
     add) do_pkg_add "$@";;
     remove) do_pkg_rm "$@";;
     search) do_pkg_search "$@";;
@@ -525,5 +514,5 @@ case "$SUBCMD" in
             *) echo "❌ 未知的 pkg 子命令: '$PKG_SUBCMD'" >&2; usage;;
         esac
         ;;
-    *) echo "❌ 未知命令: $SUBCMD" >&2; usage;;
+    *) echo "❌ 未知命令: $SUBCBCMD" >&2; usage;;
 esac
