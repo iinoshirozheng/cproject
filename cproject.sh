@@ -76,7 +76,12 @@ EOF
         echo "📝 創建主程式 (src/main.cpp)..."
         cat > "${PROJECT_DIR}/src/main.cpp" <<EOF
 #include <iostream>
-int main() { std::cout << "Hello, ${PROJECT_NAME}! 🌟" << std::endl; return 0; }
+
+int main() 
+{ 
+    std::cout << "Hello, ${PROJECT_NAME}! 🌟" << std::endl; 
+    return 0; 
+}
 EOF
         cat > "${PROJECT_DIR}/tests/basic_test.cpp" <<EOF
 #include <gtest/gtest.h>
