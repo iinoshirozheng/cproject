@@ -170,9 +170,7 @@ EOF
 
 do_build() {
     local build_config="$1"
-    if [[ -z "$build_config" ]]; then
-        build_config="release"
-    fi
+    [[ -z "$build_config" ]] && build_config="release"
 
     local project_dir; project_dir="$(pwd)"
     local build_dir="${project_dir}/build/${build_config}"
@@ -180,8 +178,7 @@ do_build() {
     local vcpkg_toolchain_file="${TOOL_SCRIPT_DIR}/vcpkg/scripts/buildsystems/vcpkg.cmake"
 
     if [[ ! -f "${cmake_file}" ]]; then
-        echo "❌ 錯誤：找不到 CMakeLists.txt。" >&2
-        exit 1
+        echo "❌ 錯誤：找不到 CMakeLists.txt。" >&2; exit 1
     fi
 
     local cmake_args=()
@@ -198,15 +195,21 @@ do_build() {
         cmake_args+=("-DBUILD_TESTS=OFF")
     fi
 
-    if [ ! -d "${build_dir}" ]; then
-        mkdir -p "${build_dir}"
-    fi
+    if [ ! -d "${build_dir}" ]; then mkdir -p "${build_dir}"; fi
 
     echo "⚙️  執行 CMake 配置 (組態: ${build_config})..."
     cmake -S . -B "${build_dir}" "${cmake_args[@]}"
 
-    echo "🔨 編譯中 (組態: ${build_config})..."
-    cmake --build "${build_dir}"
+    # 【已修改】自動偵測核心數並行建置
+    local core_count=2 # Fallback
+    if [[ "$(uname)" == "Linux" ]]; then
+        core_count=$(nproc)
+    elif [[ "$(uname)" == "Darwin" ]]; then
+        core_count=$(sysctl -n hw.ncpu)
+    fi
+
+    echo "🔨 編譯中 (組態: ${build_config}, 使用 ${core_count} 個核心)..."
+    cmake --build "${build_dir}" -- -j"${core_count}"
 
     echo "✅ 建置完成！"
 
