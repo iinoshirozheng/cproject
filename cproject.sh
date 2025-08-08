@@ -134,11 +134,24 @@ EOF
       "name": "test", "displayName": "Test Config", "description": "Build with tests enabled.", "inherits": "default",
       "binaryDir": "\${sourceDir}/build/test",
       "cacheVariables": { "BUILD_TESTS": "ON" }
+    },
+    {
+      "name": "debug", "displayName": "Debug Config", "description": "Debug build.", "inherits": "default",
+      "binaryDir": "\${sourceDir}/build/debug",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+    },
+    {
+      "name": "release", "displayName": "Release Config", "description": "Release build.", "inherits": "default",
+      "binaryDir": "\${sourceDir}/build/release",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
     }
   ],
-  "buildPresets": [
-    { "name": "default", "configurePreset": "default" }, { "name": "test", "configurePreset": "test" }
-  ],
+    "buildPresets": [
+      { "name": "default", "configurePreset": "default" },
+      { "name": "test", "configurePreset": "test" },
+      { "name": "debug", "configurePreset": "debug" },
+      { "name": "release", "configurePreset": "release" }
+    ],
   "testPresets": [
     { "name": "default", "configurePreset": "test", "output": { "outputOnFailure": true } }
   ]
