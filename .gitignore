@@ -1,64 +1,27 @@
-# Build outputs
-*.o
-*.obj
-*.exe
-*.out
-*.app
-*.dll
-*.so
-*.dylib
-*.a
-*.lib
-*.d
-*.elf
-*.hex
-*.bin
+# --- Rust build artifacts ---
+/target/
+**/*.rs.bk
 
-# CMake build directory
-build/
-cmake-build-*/
+# For applications (like this CLI), keep Cargo.lock under version control.
+# If you later turn this repo into a library crate, you can ignore it by uncommenting:
+# Cargo.lock
 
-# VSCode specific
-.vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
+# --- Tooling / editors ---
+/.vscode/
+/.idea/
 *.code-workspace
-.history/
 
-# IDE specific
-*.swp
-*.swo
-*~
+# --- Logs & env ---
+*.log
+.env
+.env.*.local
 
-# OS specific
+# --- OS cruft ---
 .DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
 Thumbs.db
 
-# Debug files
-*.pdb
-*.ilk
-*.exp
-*.idb
-*.aps
-*.ncb
-*.opendb
-*.opensdf
-*.sdf
-*.cachefile
-*.VC.db
-*.VC.VC.opendb
-
-# Dependencies
-node_modules/
-vendor/
-
-# Logs
-*.log
-logs/ 
+# --- Optional: if you occasionally build sample CMake projects in repo root ---
+# build/
+# cmake-build-*/
+# CMakeFiles/
+# CMakeCache.txt

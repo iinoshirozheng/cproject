@@ -1,1 +1,0 @@
-list(SET THIRD_PARTY_LIBS)
