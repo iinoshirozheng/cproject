@@ -57,6 +57,7 @@ pub fn remove_dep_block(file: &str, name: &str) -> Result<()> {
     let s = fs::read_to_string(file)?;
     let pat = format!(r"(?s)# === {0} START ===.*?# === {0} END ===\n?", name);
     let re = Regex::new(&pat)?;
-    fs::write(file, re.replace(&s, "").to_string())?;
+    let cleaned = re.replace_all(&s, "");
+    fs::write(file, cleaned.to_string())?;
     Ok(())
 }

@@ -30,12 +30,13 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Cmd {
-    /// Create a new project from an archetype.
+    /// Create a new project; use [ --lib | -l ] for a library.
     Create {
-        /// The archetype to use (e.g., 'app', 'lib'). Defined in cproject.toml.
-        archetype_name: String,
         /// The name of the new project directory.
         project_name: String,
+        /// Generate a library project instead of an executable
+        #[arg(long, short = 'l')]
+        lib: bool,
         /// Use defaults for all prompts (non-interactive)
         #[arg(long, alias = "yes")]
         defaults: bool,
@@ -69,6 +70,11 @@ enum PkgCmd {
     Rm { name: String },
     /// Search for available ports.
     Search { name: String },
+    /// Setup vcpkg by cloning and bootstrapping it. Optionally provide a path.
+    Setup {
+        #[arg(long, short = 'p')]
+        path: Option<String>,
+    },
 }
 
 fn main() -> Result<()> {
@@ -93,12 +99,13 @@ fn main() -> Result<()> {
     // 注意：現在我們將 `config` 物件傳遞給需要它的命令處理函數
     match cli.cmd {
         Cmd::Create {
-            archetype_name,
             project_name,
+            lib,
             defaults,
         } => {
+            let archetype_name = if lib { "lib" } else { "app" };
             // 1. 載入原型
-            let archetype = archetype::Archetype::load(&config, &archetype_name)
+            let archetype = archetype::Archetype::load(&config, archetype_name)
                 .with_context(|| format!("Failed to load archetype '{}'", archetype_name))?;
 
             // 2. 實例化原型
@@ -106,6 +113,14 @@ fn main() -> Result<()> {
             archetype
                 .instantiate(&project_name, &dest_path, defaults)
                 .with_context(|| format!("Failed to instantiate project '{}'", project_name))?;
+
+            // Post-create: ensure vcpkg is installed and ready
+            let setup_path = config
+                .vcpkg_root
+                .as_ref()
+                .and_then(|p| p.to_str())
+                .map(|s| s.to_string());
+            pkg::vcpkg_setup(setup_path.as_deref())?;
         }
         Cmd::Build { debug } => build::cmake_build(&config, debug)?,
         Cmd::Run { debug } => {
@@ -121,6 +136,7 @@ fn main() -> Result<()> {
             PkgCmd::Add { name } => pkg::add(&name)?,
             PkgCmd::Rm { name } => pkg::rm(&name)?,
             PkgCmd::Search { name } => pkg::search(&name)?,
+            PkgCmd::Setup { path } => pkg::vcpkg_setup(path.as_deref())?,
         },
         Cmd::Doctor => doctor::run()?,
     }

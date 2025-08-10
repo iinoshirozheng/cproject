@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Context, Result};
+use std::env;
 use std::{fs, path::Path, process::Command};
 
 // Import our new Config struct
@@ -19,21 +20,27 @@ pub fn cmake_build(config: &Config, debug: bool) -> Result<()> {
 
     // If we later add C++ standard to Config, we can pass -DCMAKE_CXX_STANDARD here.
 
-    // --- ARCHITECTURE CHANGE ---
-    // Instead of guessing, we now get the vcpkg path directly from the config.
-    if let Some(vcpkg_root) = &config.vcpkg_root {
-        let toolchain_file = vcpkg_root.join("scripts/buildsystems/vcpkg.cmake");
+    // Prefer explicit config, then env, then common defaults
+    let mut candidate_roots: Vec<std::path::PathBuf> = Vec::new();
+    if let Some(v) = &config.vcpkg_root {
+        candidate_roots.push(v.clone());
+    }
+    if let Ok(env_root) = env::var("VCPKG_ROOT") {
+        candidate_roots.push(env_root.into());
+    }
+    if let Some(home) = dirs::home_dir() {
+        candidate_roots.push(home.join(".local/share/vcpkg"));
+    }
+    candidate_roots.push(std::path::PathBuf::from("vcpkg"));
+
+    for root in candidate_roots {
+        let toolchain_file = root.join("scripts/buildsystems/vcpkg.cmake");
         if toolchain_file.exists() {
             cfg.arg(format!(
                 "-DCMAKE_TOOLCHAIN_FILE={}",
                 toolchain_file.display()
             ));
-        } else {
-            // It's good practice to inform the user if the configured path is problematic.
-            println!(
-                "⚠️  Warning: vcpkg_root is set, but toolchain file not found at {}",
-                toolchain_file.display()
-            );
+            break;
         }
     }
 
