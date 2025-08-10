@@ -2,6 +2,6 @@
 
 int main()
 {
-  std::cout << "Hello from ${PROJECT_NAME}!" << std::endl;
+  std::cout << "Hello from {{name}}!" << std::endl;
   return 0;
 }
