@@ -7,11 +7,13 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Dependencies (vcpkg targets appended to THIRD_PARTY_LIBS)
 include(${CMAKE_SOURCE_DIR}/cmake/dependencies.cmake)
 
-add_executable({{name}}
+add_executable(${PROJECT_NAME}
   src/main.cpp
 )
 
-target_link_libraries({{name}} PRIVATE ${THIRD_PARTY_LIBS})
+target_compile_definitions(${PROJECT_NAME} PRIVATE PROJECT_NAME="${PROJECT_NAME}")
+
+target_link_libraries(${PROJECT_NAME} PRIVATE ${THIRD_PARTY_LIBS})
 
 enable_testing()
-add_test(NAME smoke COMMAND {{name}})
+add_test(NAME smoke COMMAND ${PROJECT_NAME})

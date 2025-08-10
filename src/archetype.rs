@@ -214,15 +214,19 @@ impl Archetype {
                     fs::create_dir_all(parent)?;
                 }
 
-                // 處理 .hbs 檔案的渲染
-                if src_path.extension().map_or(false, |e| e == "hbs") {
-                    let template_str = fs::read_to_string(src_path)?;
+                // 將所有文字檔案內容當作模板渲染；二進位檔案直接複製
+                let is_hbs = src_path.extension().map_or(false, |e| e == "hbs");
+                let bytes = fs::read(src_path)?;
+                if let Ok(template_str) = String::from_utf8(bytes) {
                     let rendered_content = hbs.render_template(&template_str, context)?;
-                    // 移除 .hbs 副檔名
-                    let final_path = dest_file_path.with_extension("");
+                    let final_path = if is_hbs {
+                        dest_file_path.with_extension("")
+                    } else {
+                        dest_file_path.clone()
+                    };
                     fs::write(final_path, rendered_content)?;
                 } else {
-                    // 非模板檔案直接複製
+                    // binary: just copy
                     fs::copy(src_path, &dest_file_path)?;
                 }
             }

@@ -39,7 +39,7 @@ pub fn append_dep_block(file: &str, name: &str, find_pkg: &str, targets: &[Strin
         s = existing;
     } else {
         // initialize the file with a baseline
-        s.push_str("list(SET THIRD_PARTY_LIBS)\n");
+        s.push_str("set(THIRD_PARTY_LIBS)\n");
     }
     writeln!(
         &mut s,
