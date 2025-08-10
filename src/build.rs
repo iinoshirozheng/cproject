@@ -74,20 +74,41 @@ pub fn cmake_build(config: &Config, debug: bool, build_tests: bool) -> Result<()
 pub fn run_exe(_config: &Config, debug: bool) -> Result<()> {
     // Accept config for future use
     let name = util::project_name_from_cmakelists(".")?;
-    let exe_path = Path::new("build")
-        .join(if debug { "debug" } else { "release" })
-        .join(&name);
+    let build_mode = if debug { "debug" } else { "release" };
+    let build_dir = Path::new("build").join(build_mode);
 
-    println!("🚀 Running executable: {}", exe_path.display());
+    // 1. 定義主要執行檔和備用執行檔的路徑
+    // 主要執行檔：適用於 executable 專案 (e.g., build/release/MyApp)
+    let primary_exe_path = build_dir.join(&name);
+    // 備用執行檔：適用於 library 專案的範例程式 (e.g., build/release/MyLib_example)
+    let fallback_exe_path = build_dir.join(format!("{}_example", &name));
+
+    // 2. 判斷要執行哪一個檔案
+    let exe_to_run = if primary_exe_path.exists() {
+        primary_exe_path
+    } else if fallback_exe_path.exists() {
+        fallback_exe_path
+    } else {
+        // 3. 如果兩個都找不到，回傳一個更清楚的錯誤訊息
+        return Err(anyhow!(
+            "Could not find executable to run. Checked for '{}' and '{}'",
+            primary_exe_path.display(),
+            fallback_exe_path.display()
+        ));
+    };
+
+    // 4. 執行找到的檔案
+    println!("🚀 Running executable: {}", exe_to_run.display());
     println!("------------------------------------------");
 
-    let st = Command::new(&exe_path)
+    let st = Command::new(&exe_to_run)
         .status()
-        .with_context(|| format!("Failed to run executable at {}", exe_path.display()))?;
+        .with_context(|| format!("Failed to run executable at {}", exe_to_run.display()))?;
 
     println!("------------------------------------------");
     if !st.success() {
-        return Err(anyhow!("Program exited with non-zero status"));
+        // 在錯誤訊息中加入結束狀態碼
+        return Err(anyhow!("Program exited with non-zero status: {}", st));
     }
     Ok(())
 }

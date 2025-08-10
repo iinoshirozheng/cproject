@@ -1,12 +1,7 @@
 #include "{{name}}/{{name}}.h"
 #include <string>
 
-namespace
+namespace {{name}}
 {
-  {
-    name
-  }
-}
-{
-  std::string greet() { return "Hello from ${PROJECT_NAME}::greet()"; }
+  std::string greet() { return "Hello from {{name}}::greet()"; }
 }
