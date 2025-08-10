@@ -1,6 +1,6 @@
-use anyhow::{Result, anyhow};
-use which::which;
+use anyhow::{anyhow, Result};
 use std::env;
+use which::which;
 
 pub fn run() -> Result<()> {
     println!("🔎 Doctor: checking required tools");

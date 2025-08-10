@@ -1,7 +1,0 @@
-include(CTest)
-find_package(GTest CONFIG QUIET)
-if(GTest_FOUND)
-  enable_testing()
-else()
-  message(STATUS "GTest not found; tests will be skipped unless provided")
-endif()

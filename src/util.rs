@@ -1,4 +1,4 @@
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use regex::Regex;
 use std::{fs, path::PathBuf};
 
@@ -14,15 +14,20 @@ pub fn project_name_from_cmakelists(dir: &str) -> Result<String> {
     }
 }
 
+#[allow(dead_code)]
 pub fn maybe_toolchain_file() -> Result<Option<PathBuf>> {
     // Use VCPKG_ROOT if available
     if let Ok(root) = std::env::var("VCPKG_ROOT") {
         let p = PathBuf::from(root).join("scripts/buildsystems/vcpkg.cmake");
-        if p.exists() { return Ok(Some(p)); }
+        if p.exists() {
+            return Ok(Some(p));
+        }
     }
     // Also try local vcpkg submodule in repo root
     let p = PathBuf::from("vcpkg/scripts/buildsystems/vcpkg.cmake");
-    if p.exists() { return Ok(Some(p)); }
+    if p.exists() {
+        return Ok(Some(p));
+    }
     Ok(None)
 }
 
@@ -36,8 +41,13 @@ pub fn append_dep_block(file: &str, name: &str, find_pkg: &str, targets: &[Strin
         // initialize the file with a baseline
         s.push_str("list(SET THIRD_PARTY_LIBS)\n");
     }
-    writeln!(&mut s, "\n# === {n} START ===\n{fp}\nlist(APPEND THIRD_PARTY_LIBS {tg})\n# === {n} END ===",
-        n=name, fp=find_pkg, tg=targets.join(" "))?;
+    writeln!(
+        &mut s,
+        "\n# === {n} START ===\n{fp}\nlist(APPEND THIRD_PARTY_LIBS {tg})\n# === {n} END ===",
+        n = name,
+        fp = find_pkg,
+        tg = targets.join(" ")
+    )?;
     fs::create_dir_all(std::path::Path::new(file).parent().unwrap())?;
     fs::write(file, s)?;
     Ok(())

@@ -1,47 +1,102 @@
-use anyhow::{Result, anyhow, Context};
-use std::{process::Command, fs};
+use anyhow::{anyhow, Context, Result};
+use std::{fs, path::Path, process::Command};
+
+// Import our new Config struct
+use crate::config::Config;
 use crate::util;
 
-pub fn cmake_build(debug: bool) -> Result<()> {
+/// Configure and build the project using CMake.
+/// Now accepts the application config to find the toolchain.
+pub fn cmake_build(config: &Config, debug: bool) -> Result<()> {
     let build_type = if debug { "Debug" } else { "Release" };
     let build_dir = format!("build/{}", if debug { "debug" } else { "release" });
     fs::create_dir_all(&build_dir)?;
 
-    let toolchain = util::maybe_toolchain_file()?;
-
     // Configure
     let mut cfg = Command::new("cmake");
     cfg.args(["-S", ".", "-B", &build_dir])
-       .arg(format!("-DCMAKE_BUILD_TYPE={build_type}"));
-    if let Some(tc) = toolchain {
-        cfg.arg(format!("-DCMAKE_TOOLCHAIN_FILE={}", tc.display()));
+        .arg(format!("-DCMAKE_BUILD_TYPE={build_type}"));
+
+    // If we later add C++ standard to Config, we can pass -DCMAKE_CXX_STANDARD here.
+
+    // --- ARCHITECTURE CHANGE ---
+    // Instead of guessing, we now get the vcpkg path directly from the config.
+    if let Some(vcpkg_root) = &config.vcpkg_root {
+        let toolchain_file = vcpkg_root.join("scripts/buildsystems/vcpkg.cmake");
+        if toolchain_file.exists() {
+            cfg.arg(format!(
+                "-DCMAKE_TOOLCHAIN_FILE={}",
+                toolchain_file.display()
+            ));
+        } else {
+            // It's good practice to inform the user if the configured path is problematic.
+            println!(
+                "⚠️  Warning: vcpkg_root is set, but toolchain file not found at {}",
+                toolchain_file.display()
+            );
+        }
     }
-    let st = cfg.status().context("failed to invoke cmake (configure)")?;
-    if !st.success() { return Err(anyhow!("cmake configure failed")); }
+
+    let st = cfg.status().context("Failed to invoke cmake (configure)")?;
+    if !st.success() {
+        return Err(anyhow!("cmake configure failed"));
+    }
 
     // Build
+    println!("🔨 Building project in '{}' mode...", build_type);
     let st = Command::new("cmake")
         .args(["--build", &build_dir, "--"])
-        .arg("-j")
+        // A simple improvement: use multiple cores for faster builds.
+        .arg(format!("-j{}", num_cpus::get()))
         .status()
-        .context("failed to invoke cmake --build")?;
-    if !st.success() { return Err(anyhow!("cmake build failed")); }
+        .context("Failed to invoke cmake --build")?;
+    if !st.success() {
+        return Err(anyhow!("cmake build failed"));
+    }
 
+    println!("✅ Build complete.");
     Ok(())
 }
 
-pub fn run_exe(debug: bool) -> Result<()> {
+/// Build and run the project's main executable.
+pub fn run_exe(_config: &Config, debug: bool) -> Result<()> {
+    // Accept config for future use
     let name = util::project_name_from_cmakelists(".")?;
-    let exe = format!("build/{}/{}", if debug { "debug" } else { "release" }, name);
-    let st = Command::new(&exe).status()?;
-    if !st.success() { return Err(anyhow!("program exited non-zero")); }
+    let exe_path = Path::new("build")
+        .join(if debug { "debug" } else { "release" })
+        .join(&name);
+
+    println!("🚀 Running executable: {}", exe_path.display());
+    println!("------------------------------------------");
+
+    let st = Command::new(&exe_path)
+        .status()
+        .with_context(|| format!("Failed to run executable at {}", exe_path.display()))?;
+
+    println!("------------------------------------------");
+    if !st.success() {
+        return Err(anyhow!("Program exited with non-zero status"));
+    }
     Ok(())
 }
 
-pub fn run_tests() -> Result<()> {
-    // Prefer Debug ctest dir
+/// Build and run the project's tests using CTest.
+pub fn run_tests(_config: &Config) -> Result<()> {
+    // Accept config for future use
+    // Tests are almost always run in Debug mode.
     let test_dir = "build/debug";
-    let st = Command::new("ctest").args(["--test-dir", test_dir, "--output-on-failure"]).status()?;
-    if !st.success() { return Err(anyhow!("tests failed")); }
+
+    println!("🔬 Running tests in '{}'...", test_dir);
+    let st = Command::new("ctest")
+        .current_dir(test_dir) // It's often more reliable to run ctest from its build dir.
+        .args(["--output-on-failure"])
+        .status()
+        .context("Failed to invoke ctest")?;
+
+    if !st.success() {
+        return Err(anyhow!("Tests failed"));
+    }
+
+    println!("✅ All tests passed.");
     Ok(())
 }

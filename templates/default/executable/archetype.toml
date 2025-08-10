@@ -1,0 +1,16 @@
+# templates/default/executable/archetype.toml
+
+description = "A standard C++ executable project."
+
+[variables]
+author = { prompt = "Enter the author's name", default = "Your Name" }
+license = { prompt = "Choose a license", default = "MIT" }
+
+[hooks.post_create]
+# 在專案建立後執行的指令
+# {{name}} 會被替換為專案名稱
+commands = [
+    "git init",
+    "git add .",
+    "git commit -m 'feat: Initial commit for {{name}} from cproject'",
+]
