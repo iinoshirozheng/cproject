@@ -3,7 +3,9 @@
 description = "A standard C++ static library project with an example executable."
 
 [variables]
+author = { prompt = "Author", default = "Your Name" }
+license = { prompt = "License", default = "MIT" }
 
 [hooks.post_create]
 # 可以定義與 executable 不同的鉤子
-commands = []
+commands = ["git init", "git add .", "git commit -m 'chore: init {{name}}'"]

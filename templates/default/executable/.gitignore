@@ -1,0 +1,46 @@
+# CMake artifacts
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+cmake_install.cmake
+CTestTestfile.cmake
+Testing/
+Makefile
+install_manifest.txt
+
+# Build directories
+build/
+build-debug/
+build-release/
+cmake-build-*/
+
+# Binaries and objects
+*.o
+*.obj
+*.lo
+*.la
+*.a
+*.lib
+*.dll
+*.so
+*.dylib
+*.exe
+*.out
+*.app
+
+# IDE/project files
+.vscode/
+.idea/
+.vs/
+
+# macOS
+.DS_Store
+
+# Logs
+*.log
+
+# Coverage
+*.gcno
+*.gcda
+*.gcov
+

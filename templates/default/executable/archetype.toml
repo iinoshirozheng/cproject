@@ -3,8 +3,10 @@
 description = "A standard C++ executable project."
 
 [variables]
+author = { prompt = "Author", default = "Your Name" }
+license = { prompt = "License", default = "MIT" }
 
 [hooks.post_create]
 # 在專案建立後執行的指令
 # {{name}} 會被替換為專案名稱
-commands = []
+commands = ["git init", "git add .", "git commit -m 'chore: init {{name}}'"]

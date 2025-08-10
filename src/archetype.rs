@@ -66,7 +66,10 @@ impl Archetype {
         // 在所有模板位置中尋找原型
         let mut template_locations = app_config.templates.locations.clone();
         // 將內建模板位置加入搜尋路徑
+        // 1) 相對於目前工作目錄
         template_locations.push(PathBuf::from("./templates"));
+        // 2) 相對於專案來源根目錄（無論從哪個 CWD 執行，都可找到）
+        template_locations.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("templates"));
 
         let mut final_template_path: Option<PathBuf> = None;
 
@@ -113,9 +116,9 @@ impl Archetype {
 
         // 1. 收集變數
         let context_data = if use_defaults {
-            self.collect_variables_with_defaults(project_name)?
+            self.collect_variables_with_defaults(project_name, destination)?
         } else {
-            self.collect_variables_interactively(project_name)?
+            self.collect_variables_interactively(project_name, destination)?
         };
 
         // 2. 渲染模板
@@ -136,7 +139,11 @@ impl Archetype {
     }
 
     /// 透過互動式提示收集使用者輸入的變數
-    fn collect_variables_interactively(&self, project_name: &str) -> Result<serde_json::Value> {
+    fn collect_variables_interactively(
+        &self,
+        project_name: &str,
+        destination: &Path,
+    ) -> Result<serde_json::Value> {
         let mut context = HashMap::new();
         context.insert("name".to_string(), json!(project_name));
         context.insert(
@@ -148,6 +155,10 @@ impl Archetype {
         for (key, var_info) in &self.config.variables {
             // Ensure reserved keys are not overridden by template variables
             if key == "name" || key == "year" {
+                continue;
+            }
+            // If destination is already inside a git repo, skip author/license prompts
+            if (key == "author" || key == "license") && Self::is_inside_git_repo(destination)? {
                 continue;
             }
             // 簡易的互動式輸入，可以使用 `dialoguer` crate 來優化
@@ -170,7 +181,11 @@ impl Archetype {
     }
 
     /// 使用預設值自動填入變數（非互動）
-    fn collect_variables_with_defaults(&self, project_name: &str) -> Result<serde_json::Value> {
+    fn collect_variables_with_defaults(
+        &self,
+        project_name: &str,
+        destination: &Path,
+    ) -> Result<serde_json::Value> {
         let mut context = HashMap::new();
         context.insert("name".to_string(), json!(project_name));
         context.insert(
@@ -182,12 +197,27 @@ impl Archetype {
             if key == "name" || key == "year" {
                 continue;
             }
+            // If destination is already inside a git repo, skip author/license defaults
+            if (key == "author" || key == "license") && Self::is_inside_git_repo(destination)? {
+                continue;
+            }
             context.insert(
                 key.clone(),
                 json!(var_info.default.clone().unwrap_or_default()),
             );
         }
         Ok(json!(context))
+    }
+
+    fn is_inside_git_repo(path: &Path) -> Result<bool> {
+        if let Ok(status) = Command::new("git")
+            .args(["rev-parse", "--is-inside-work-tree"])
+            .current_dir(path)
+            .status()
+        {
+            return Ok(status.success());
+        }
+        Ok(false)
     }
 
     fn render_template_dir(&self, dest_path: &Path, context: &serde_json::Value) -> Result<()> {
@@ -206,6 +236,16 @@ impl Archetype {
             let rendered_rel_path_str =
                 hbs.render_template(&rel_path.to_string_lossy(), context)?;
             let dest_file_path = dest_path.join(PathBuf::from(rendered_rel_path_str));
+
+            // If destination is already inside a Git repository, skip generating .gitignore
+            if dest_file_path
+                .file_name()
+                .map(|n| n == ".gitignore")
+                .unwrap_or(false)
+                && Self::is_inside_git_repo(dest_path)?
+            {
+                continue;
+            }
 
             if entry.file_type().is_dir() {
                 fs::create_dir_all(&dest_file_path)?;
@@ -236,6 +276,17 @@ impl Archetype {
 
     fn run_hooks(&self, working_dir: &Path, context: &serde_json::Value) -> Result<()> {
         let hbs = Handlebars::new();
+        // Detect if working_dir is already inside a Git repository; if so, skip git-related hooks
+        let mut skip_git = false;
+        if let Ok(status) = std::process::Command::new("git")
+            .args(["rev-parse", "--is-inside-work-tree"])
+            .current_dir(working_dir)
+            .status()
+        {
+            if status.success() {
+                skip_git = true;
+            }
+        }
         for cmd_template in &self.config.hooks.post_create.commands {
             let cmd_str = hbs.render_template(cmd_template, context)?;
             println!("  -> Executing: `{}`", cmd_str);
@@ -245,6 +296,11 @@ impl Archetype {
                 .get(0)
                 .ok_or_else(|| anyhow!("Empty command in hooks"))?;
             let args: Vec<&str> = parts.iter().skip(1).map(|s| s.as_str()).collect();
+
+            if skip_git && program == "git" {
+                println!("  -> Skipping git command inside existing repository");
+                continue;
+            }
 
             let status = Command::new(program)
                 .args(args)
