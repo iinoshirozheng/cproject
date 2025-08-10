@@ -122,14 +122,14 @@ fn main() -> Result<()> {
                 .map(|s| s.to_string());
             pkg::vcpkg_setup(setup_path.as_deref())?;
         }
-        Cmd::Build { debug } => build::cmake_build(&config, debug)?,
+        Cmd::Build { debug } => build::cmake_build(&config, debug, false)?,
         Cmd::Run { debug } => {
-            build::cmake_build(&config, debug)?;
+            build::cmake_build(&config, debug, false)?;
             build::run_exe(&config, debug)?;
         }
         Cmd::Test => {
             // 測試通常在 debug 模式下進行
-            build::cmake_build(&config, true)?;
+            build::cmake_build(&config, true, true)?;
             build::run_tests(&config)?;
         }
         Cmd::Pkg { sub } => match sub {

@@ -7,10 +7,7 @@ pub fn run() -> Result<()> {
     check("git")?;
     check("cmake")?;
     check("bash")?;
-    // optional
-    opt("ninja");
-    opt("jq");
-    opt("vcpkg");
+    check("vcpkg")?;
 
     if let Ok(root) = env::var("VCPKG_ROOT") {
         println!("• VCPKG_ROOT = {}", root);
@@ -25,11 +22,4 @@ fn check(bin: &str) -> Result<()> {
     which(bin).map_err(|_| anyhow!("required tool not found: {bin}"))?;
     println!("• {} ✓", bin);
     Ok(())
-}
-fn opt(bin: &str) {
-    if which(bin).is_ok() {
-        println!("• {} ✓ (optional)", bin);
-    } else {
-        println!("• {} (optional) not found", bin);
-    }
 }

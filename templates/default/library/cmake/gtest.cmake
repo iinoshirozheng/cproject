@@ -8,6 +8,7 @@ if(BUILD_TESTS)
   if(GTest_FOUND)
     add_executable(run_tests tests/basic_test.cpp)
     target_link_libraries(run_tests PRIVATE
+      ${PROJECT_NAME}
       ${THIRD_PARTY_LIBS}
       GTest::gtest
       GTest::gtest_main
@@ -17,9 +18,10 @@ if(BUILD_TESTS)
     add_test(NAME all-tests COMMAND run_tests)
   else()
     message(STATUS "GTest not found; tests will be skipped unless provided")
-    # Fallback: define a smoke test that runs the main executable if available
-    if(TARGET ${PROJECT_NAME})
-      add_test(NAME smoke COMMAND ${PROJECT_NAME})
-    endif()
+    add_executable(${PROJECT_NAME}_example src/main.cpp)
+    target_link_libraries(${PROJECT_NAME}_example PRIVATE ${PROJECT_NAME})
+    add_test(NAME smoke COMMAND ${PROJECT_NAME}_example)
   endif()
 endif()
+
+
