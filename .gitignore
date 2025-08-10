@@ -1,27 +1,18 @@
-# --- Rust build artifacts ---
-/target/
+# Rust
+/target
 **/*.rs.bk
+Cargo.lock
 
-# For applications (like this CLI), keep Cargo.lock under version control.
-# If you later turn this repo into a library crate, you can ignore it by uncommenting:
-# Cargo.lock
+# CMake
+build/
+CMakeCache.txt
+CMakeFiles/
+cmake-build-*/
+_compile_commands.json
+Makefile
+install_manifest.txt
 
-# --- Tooling / editors ---
-/.vscode/
-/.idea/
-*.code-workspace
-
-# --- Logs & env ---
-*.log
-.env
-.env.*.local
-
-# --- OS cruft ---
+# Misc
 .DS_Store
-Thumbs.db
-
-# --- Optional: if you occasionally build sample CMake projects in repo root ---
-# build/
-# cmake-build-*/
-# CMakeFiles/
-# CMakeCache.txt
+.idea
+.vscode

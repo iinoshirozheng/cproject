@@ -1,0 +1,23 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build (Linux x86_64)
+        run: cargo build --release
+      - name: Archive
+        run: |
+          mkdir -p dist
+          cp target/release/cproject dist/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cproject-linux-x64
+          path: dist/*
