@@ -32,21 +32,22 @@ pub fn maybe_toolchain_file() -> Result<Option<PathBuf>> {
 }
 
 // Append/remove dependency blocks in cmake/dependencies.cmake
-pub fn append_dep_block(file: &str, name: &str, find_pkg: &str, targets: &[String]) -> Result<()> {
+pub fn append_dep_block(file: &str, name: &str, block_content: &str) -> Result<()> {
     use std::fmt::Write as _;
     let mut s = String::new();
     if let Ok(existing) = fs::read_to_string(file) {
         s = existing;
     } else {
-        // initialize the file with a baseline
+        // 如果檔案不存在，用一個基準內容來初始化它
         s.push_str("set(THIRD_PARTY_LIBS)\n");
     }
+
+    // 將傳入的整個區塊內容寫入檔案，並用註解包圍
     writeln!(
         &mut s,
-        "\n# === {n} START ===\n{fp}\nlist(APPEND THIRD_PARTY_LIBS {tg})\n# === {n} END ===",
+        "\n# === {n} START ===\n{content}\n# === {n} END ===",
         n = name,
-        fp = find_pkg,
-        tg = targets.join(" ")
+        content = block_content
     )?;
     fs::create_dir_all(std::path::Path::new(file).parent().unwrap())?;
     fs::write(file, s)?;

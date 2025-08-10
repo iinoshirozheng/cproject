@@ -1,5 +1,6 @@
 # Rust
 /target
+/bin/cproject
 **/*.rs.bk
 Cargo.lock
 

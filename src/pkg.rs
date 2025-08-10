@@ -1,28 +1,71 @@
 use crate::util;
 use anyhow::{anyhow, Result};
 use std::env;
+use regex::Regex;
 use std::path::PathBuf;
 use std::process::Command;
 
 pub fn add(name: &str) -> Result<()> {
-    // Minimal demo: vcpkg install + naive injection.
-    ensure_vcpkg()?;
-    let st = Command::new("vcpkg").args(["install", name]).status()?;
-    if !st.success() {
-        return Err(anyhow!("vcpkg install failed"));
+    // ... (第一次安裝和 gtest 的判斷邏輯保持不變) ...
+    println!("📦 First-pass: Installing '{name}' with vcpkg (output will be shown)...");
+    let first_run_status = Command::new("vcpkg").args(["install", name]).status()?;
+    if !first_run_status.success() {
+        return Err(anyhow!("vcpkg install failed during first pass."));
+    }
+    println!("✅ First-pass installation complete.\n---");
+
+    if name.to_lowercase() == "gtest" {
+        println!("✅ gtest is installed and supported by default through cmake/gtest.cmake.");
+        println!("   You can run tests with: cproject test");
+        return Ok(());
     }
 
-    // vcpkg's CMake config names usually replace '-' with '_' and targets follow the same rule
+    // ... (第二次捕獲輸出的邏輯保持不變) ...
+    println!("📦 Second-pass: Capturing CMake usage hints...");
+    let command_to_run = format!("vcpkg install {}", name);
+    let output = Command::new("script")
+        .args(["-q", "/dev/null", "bash", "-c", &command_to_run])
+        .output()?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(anyhow!("vcpkg install failed during second pass (capturing output):\n{}", stderr));
+    }
+    
+    let stdout_raw = String::from_utf8_lossy(&output.stdout);
+    // 清理 ANSI 碼
+    let ansi_re = Regex::new(r"\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[m|K]")?;
+    let stdout = ansi_re.replace_all(&stdout_raw, "").to_string();
+
     let cmake_name = name.replace('-', "_");
-    let find_line = format!("find_package({} CONFIG REQUIRED)", cmake_name);
-    let target = format!("{}::{}", cmake_name, cmake_name);
-    // Remove any previous blocks for both forms to avoid duplicates
     let _ = util::remove_dep_block("cmake/dependencies.cmake", name);
     if cmake_name != name {
         let _ = util::remove_dep_block("cmake/dependencies.cmake", &cmake_name);
     }
-    util::append_dep_block("cmake/dependencies.cmake", name, &find_line, &[target])?;
-    println!("✅ installed and injected: {name}");
+    
+    // --- 修改開始: 智慧解析並產生正確的 CMake 指令 ---
+    let re_find = Regex::new(r"find_package\(([^)]+)\)")?;
+    let re_link = Regex::new(r"target_link_libraries\([^)]+ (PRIVATE|PUBLIC|INTERFACE) ([^)]+)\)")?;
+
+    let find_line = re_find.captures(&stdout).map(|c| c[0].to_string());
+    let link_libs: Option<Vec<String>> = re_link.captures(&stdout).map(|c| {
+        c[2].split_whitespace().map(|s| s.to_string()).collect()
+    });
+
+    let injection_block = if let (Some(find), Some(libs)) = (find_line, link_libs) {
+        println!("🎯 Found CMake usage hint. Constructing injection block...");
+        let libs_str = libs.join(" ");
+        format!("{}\nlist(APPEND THIRD_PARTY_LIBS {})", find, libs_str)
+    } else {
+        // --- Fallback: 如果解析失敗，使用原本的簡易注入邏輯 ---
+        println!("⚠️ Could not find specific usage hint, falling back to naive injection.");
+        let find_line = format!("find_package({} CONFIG REQUIRED)", cmake_name);
+        let target = format!("{}::{}", cmake_name, cmake_name);
+        format!("{}\nlist(APPEND THIRD_PARTY_LIBS {})", find_line, target)
+    };
+
+    util::append_dep_block("cmake/dependencies.cmake", name, &injection_block)?;
+    println!("✅ Installed and injected dependency '{name}' into cmake/dependencies.cmake");
+
     Ok(())
 }
 
